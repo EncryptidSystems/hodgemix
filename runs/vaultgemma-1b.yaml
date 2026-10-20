@@ -1,0 +1,16 @@
+base:
+  model: C:\Users\grego\Downloads\model (3).safetensors
+  tokenizer: C:\Users\grego\models\prod\vaultgemma\tokenizer.json
+  tokenizer_config: C:\Users\grego\Downloads\tokenizer_config (2).json
+  config: C:\Users\grego\Downloads\config (3).json
+  special_tokens_map: C:\Users\grego\Downloads\special_tokens_map (1).json
+  generation_config: C:\Users\grego\Downloads\generation_config (2).json
+sources:
+  - model: C:\Users\grego\Downloads\model (3).safetensors
+    weight: 1
+    tokenizer: C:\Users\grego\models\prod\vaultgemma\tokenizer.json
+    tokenizer_config: C:\Users\grego\Downloads\tokenizer_config (2).json
+    config: C:\Users\grego\Downloads\config (3).json
+    special_tokens_map: C:\Users\grego\Downloads\special_tokens_map (1).json
+    generation_config: C:\Users\grego\Downloads\generation_config (2).json
+out: C:\Users\grego\models\prod\vaultgemma\model.bnz

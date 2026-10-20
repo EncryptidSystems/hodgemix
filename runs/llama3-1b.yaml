@@ -1,0 +1,16 @@
+base:
+  model: C:\Users\grego\Downloads\model (2).safetensors
+  tokenizer: C:\Users\grego\Downloads\tokenizer.json
+  tokenizer_config: C:\Users\grego\Downloads\tokenizer_config (1).json
+  config: C:\Users\grego\Downloads\config.json
+  special_tokens_map: C:\Users\grego\Downloads\special_tokens_map.json
+  generation_config: C:\Users\grego\Downloads\generation_config (1).json
+sources:
+  - model: C:\Users\grego\Downloads\model (2).safetensors
+    weight: 1
+    tokenizer: C:\Users\grego\Downloads\tokenizer.json
+    tokenizer_config: C:\Users\grego\Downloads\tokenizer_config (1).json
+    config: C:\Users\grego\Downloads\config.json
+    special_tokens_map: C:\Users\grego\Downloads\special_tokens_map.json
+    generation_config: C:\Users\grego\Downloads\generation_config (1).json
+out: C:\Users\grego\models\prod\llama\model.bnz

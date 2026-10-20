@@ -1,0 +1,5 @@
+models:
+  - model: C:\Users\grego\models\microsoft\bitnet-b1.58-2B-4T\model.safetensors
+    tokenizer: C:\Users\grego\models\microsoft\bitnet-b1.58-2B-4T\tokenizer.json
+    tokenizer_config: C:\Users\grego\models\microsoft\bitnet-b1.58-2B-4T\tokenizer_config.json
+    config: C:\Users\grego\models\microsoft\bitnet-b1.58-2B-4T\config.json

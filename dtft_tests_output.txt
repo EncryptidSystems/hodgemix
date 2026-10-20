@@ -1,0 +1,144 @@
+### hodgemix --dtft-tests 
+
+=== grid [64 64] (radices [2 2 2 2 2 2] x [2 2 2 2 2 2]), band < (paper H2) ===
+P1 identical                       runs=10 band modes/run=0 | PSR-pass 0/0 osc | non-base: L2 0/0, winding 0/0, tick-locked 0/0, MERGED 0/0 | r meas 0[0..0] pred 0[0..0] K/Kc 0[0..0]
+P2 random row/col permutation      runs=10 band modes/run=0 | PSR-pass 0/0 osc | non-base: L2 0/0, winding 0/0, tick-locked 0/0, MERGED 0/0 | r meas 0[0..0] pred 0[0..0] K/Kc 0[0..0]
+P2 ternary noise (matched absmean) runs=10 band modes/run=0 | PSR-pass 0/0 osc | non-base: L2 0/0, winding 0/0, tick-locked 0/0, MERGED 0/0 | r meas 0[0..0] pred 0[0..0] K/Kc 0[0..0]
+P3 coarsest-digit cyclic shift     runs=10 band modes/run=0 | PSR-pass 0/0 osc | non-base: L2 0/0, winding 0/0, tick-locked 0/0, MERGED 0/0 | r meas 0[0..0] pred 0[0..0] K/Kc 0[0..0]
+  P4 blend M_a = (1-a) base + a rand (rand = ternary noise, matched absmean), 10 seeds:
+    a=0.0                          runs=10 band modes/run=0 | PSR-pass 0/0 osc | non-base: L2 0/0, winding 0/0, tick-locked 0/0, MERGED 0/0 | r meas 0[0..0] pred 0[0..0] K/Kc 0[0..0]
+    a=0.1                          runs=10 band modes/run=0 | PSR-pass 0/0 osc | non-base: L2 0/0, winding 0/0, tick-locked 0/0, MERGED 0/0 | r meas 0[0..0] pred 0[0..0] K/Kc 0[0..0]
+    a=0.2                          runs=10 band modes/run=0 | PSR-pass 0/0 osc | non-base: L2 0/0, winding 0/0, tick-locked 0/0, MERGED 0/0 | r meas 0[0..0] pred 0[0..0] K/Kc 0[0..0]
+    a=0.3                          runs=10 band modes/run=0 | PSR-pass 0/0 osc | non-base: L2 0/0, winding 0/0, tick-locked 0/0, MERGED 0/0 | r meas 0[0..0] pred 0[0..0] K/Kc 0[0..0]
+    a=0.5                          runs=10 band modes/run=0 | PSR-pass 0/0 osc | non-base: L2 0/0, winding 0/0, tick-locked 0/0, MERGED 0/0 | r meas 0[0..0] pred 0[0..0] K/Kc 0[0..0]
+    a=0.7                          runs=10 band modes/run=0 | PSR-pass 0/0 osc | non-base: L2 0/0, winding 0/0, tick-locked 0/0, MERGED 0/0 | r meas 0[0..0] pred 0[0..0] K/Kc 0[0..0]
+    a=0.9                          runs=10 band modes/run=0 | PSR-pass 0/0 osc | non-base: L2 0/0, winding 0/0, tick-locked 0/0, MERGED 0/0 | r meas 0[0..0] pred 0[0..0] K/Kc 0[0..0]
+    a=1.0                          runs=10 band modes/run=0 | PSR-pass 0/0 osc | non-base: L2 0/0, winding 0/0, tick-locked 0/0, MERGED 0/0 | r meas 0[0..0] pred 0[0..0] K/Kc 0[0..0]
+
+=== grid [60 90] (radices [5 3 2 2] x [5 3 3 2]), band < (paper H2) ===
+P1 identical                       runs=10 band modes/run=1 | PSR-pass 0/20 osc | non-base: L2 10/10, winding 10/10, tick-locked 10/10, MERGED 0/10 | r meas 1[1..1] pred 1[1..1] K/Kc +Inf[+Inf..+Inf]
+P2 random row/col permutation      runs=10 band modes/run=1 | PSR-pass 2/20 osc | non-base: L2 5/10, winding 4/10, tick-locked 10/10, MERGED 0/10 | r meas 1[1..1] pred 0.787[0.306..0.991] K/Kc 11.3[1.1..57.3]
+P2 ternary noise (matched absmean) runs=10 band modes/run=1 | PSR-pass 0/20 osc | non-base: L2 1/10, winding 2/10, tick-locked 10/10, MERGED 0/10 | r meas 1[1..1] pred 0.218[0..0.95] K/Kc 1.72[0.2..10.3]
+P3 coarsest-digit cyclic shift     runs=10 band modes/run=1 | PSR-pass 0/20 osc | non-base: L2 10/10, winding 10/10, tick-locked 10/10, MERGED 0/10 | r meas 1[1..1] pred 1[1..1] K/Kc +Inf[+Inf..+Inf]
+  P3 seed0: shifts recovered by seed=see log; periods base [-0.0833 0.6] shifted(after seed) [-0.0833 0.6]; group-delay shift (samples, mode 0)=[0 0]; windings [0 1] vs [0 1]
+  P2 seed0: periods base [-0.0833 0.6] permuted [0.0833 0.3] windings [0 1] vs [0 1]; nu base [0.0762] perm [0.0323]
+  P3 raw (no seed) periods: base [-0.0833 0.6], coarsest-row-digit (sequence axis) shifted [-0.0833 0.6]; group delay (samples) of that raw shift on mode 0: 2.544 (sequence axis = rows here, coarsest row digit shift = 60/5 = 12 samples)
+  base band sequence (mode 0, seed 0): peak bin 5 PSR 8.79 uniq 1.82 nu 0.0762
+  P3 raw (no seed) periods: coarsest-col-digit (mode axis) shifted [-0.0833 0.6]; group delay (samples) of raw shift on mode 0: 0.000
+  P4 blend M_a = (1-a) base + a rand (rand = ternary noise, matched absmean), 10 seeds:
+    a=0.0                          runs=10 band modes/run=1 | PSR-pass 0/20 osc | non-base: L2 10/10, winding 10/10, tick-locked 10/10, MERGED 0/10 | r meas 1[1..1] pred 1[1..1] K/Kc +Inf[+Inf..+Inf]
+    a=0.1                          runs=10 band modes/run=1 | PSR-pass 1/20 osc | non-base: L2 10/10, winding 8/10, tick-locked 10/10, MERGED 0/10 | r meas 1[1..1] pred 0.998[0.997..1] K/Kc 506[145..1.39e+03]
+    a=0.2                          runs=10 band modes/run=1 | PSR-pass 1/20 osc | non-base: L2 10/10, winding 6/10, tick-locked 10/10, MERGED 0/10 | r meas 1[1..1] pred 0.996[0.993..0.999] K/Kc 267[68..850]
+    a=0.3                          runs=10 band modes/run=1 | PSR-pass 1/20 osc | non-base: L2 9/10, winding 5/10, tick-locked 10/10, MERGED 0/10 | r meas 1[1..1] pred 0.966[0.722..0.999] K/Kc 218[2.09..800]
+    a=0.5                          runs=10 band modes/run=1 | PSR-pass 0/20 osc | non-base: L2 8/10, winding 4/10, tick-locked 10/10, MERGED 0/10 | r meas 1[1..1] pred 0.855[0..0.998] K/Kc 41.8[0.209..263]
+    a=0.7                          runs=10 band modes/run=1 | PSR-pass 0/20 osc | non-base: L2 2/10, winding 2/10, tick-locked 10/10, MERGED 0/10 | r meas 1[1..1] pred 0.36[0..0.995] K/Kc 11.9[0.2..94.9]
+    a=0.9                          runs=10 band modes/run=1 | PSR-pass 0/20 osc | non-base: L2 3/10, winding 1/10, tick-locked 10/10, MERGED 0/10 | r meas 1[1..1] pred 0.353[0..0.982] K/Kc 4.4[0.209..27.9]
+    a=1.0                          runs=10 band modes/run=1 | PSR-pass 0/20 osc | non-base: L2 3/10, winding 1/10, tick-locked 10/10, MERGED 0/10 | r meas 1[1..1] pred 0.369[0..0.996] K/Kc 15.9[0.31..132]
+### hodgemix --dtft-tests --band-inclusive
+
+=== grid [64 64] (radices [2 2 2 2 2 2] x [2 2 2 2 2 2]), band <= (inclusive) ===
+P1 identical                       runs=10 band modes/run=0 | PSR-pass 0/0 osc | non-base: L2 0/0, winding 0/0, tick-locked 0/0, MERGED 0/0 | r meas 0[0..0] pred 0[0..0] K/Kc 0[0..0]
+P2 random row/col permutation      runs=10 band modes/run=0 | PSR-pass 0/0 osc | non-base: L2 0/0, winding 0/0, tick-locked 0/0, MERGED 0/0 | r meas 0[0..0] pred 0[0..0] K/Kc 0[0..0]
+P2 ternary noise (matched absmean) runs=10 band modes/run=0 | PSR-pass 0/0 osc | non-base: L2 0/0, winding 0/0, tick-locked 0/0, MERGED 0/0 | r meas 0[0..0] pred 0[0..0] K/Kc 0[0..0]
+P3 coarsest-digit cyclic shift     runs=10 band modes/run=0 | PSR-pass 0/0 osc | non-base: L2 0/0, winding 0/0, tick-locked 0/0, MERGED 0/0 | r meas 0[0..0] pred 0[0..0] K/Kc 0[0..0]
+  P4 blend M_a = (1-a) base + a rand (rand = ternary noise, matched absmean), 10 seeds:
+    a=0.0                          runs=10 band modes/run=0 | PSR-pass 0/0 osc | non-base: L2 0/0, winding 0/0, tick-locked 0/0, MERGED 0/0 | r meas 0[0..0] pred 0[0..0] K/Kc 0[0..0]
+    a=0.1                          runs=10 band modes/run=0 | PSR-pass 0/0 osc | non-base: L2 0/0, winding 0/0, tick-locked 0/0, MERGED 0/0 | r meas 0[0..0] pred 0[0..0] K/Kc 0[0..0]
+    a=0.2                          runs=10 band modes/run=0 | PSR-pass 0/0 osc | non-base: L2 0/0, winding 0/0, tick-locked 0/0, MERGED 0/0 | r meas 0[0..0] pred 0[0..0] K/Kc 0[0..0]
+    a=0.3                          runs=10 band modes/run=0 | PSR-pass 0/0 osc | non-base: L2 0/0, winding 0/0, tick-locked 0/0, MERGED 0/0 | r meas 0[0..0] pred 0[0..0] K/Kc 0[0..0]
+    a=0.5                          runs=10 band modes/run=0 | PSR-pass 0/0 osc | non-base: L2 0/0, winding 0/0, tick-locked 0/0, MERGED 0/0 | r meas 0[0..0] pred 0[0..0] K/Kc 0[0..0]
+    a=0.7                          runs=10 band modes/run=0 | PSR-pass 0/0 osc | non-base: L2 0/0, winding 0/0, tick-locked 0/0, MERGED 0/0 | r meas 0[0..0] pred 0[0..0] K/Kc 0[0..0]
+    a=0.9                          runs=10 band modes/run=0 | PSR-pass 0/0 osc | non-base: L2 0/0, winding 0/0, tick-locked 0/0, MERGED 0/0 | r meas 0[0..0] pred 0[0..0] K/Kc 0[0..0]
+    a=1.0                          runs=10 band modes/run=0 | PSR-pass 0/0 osc | non-base: L2 0/0, winding 0/0, tick-locked 0/0, MERGED 0/0 | r meas 0[0..0] pred 0[0..0] K/Kc 0[0..0]
+
+=== grid [60 90] (radices [5 3 2 2] x [5 3 3 2]), band <= (inclusive) ===
+P1 identical                       runs=10 band modes/run=2 | PSR-pass 0/40 osc | non-base: L2 20/20, winding 20/20, tick-locked 20/20, MERGED 0/20 | r meas 1[1..1] pred 1[1..1] K/Kc +Inf[+Inf..+Inf]
+P2 random row/col permutation      runs=10 band modes/run=2 | PSR-pass 2/40 osc | non-base: L2 11/20, winding 4/20, tick-locked 16/20, MERGED 0/20 | r meas 0.924[0.81..1] pred 0.524[0..0.976] K/Kc 4.93[0.182..21]
+P2 ternary noise (matched absmean) runs=10 band modes/run=2 | PSR-pass 0/40 osc | non-base: L2 11/20, winding 8/20, tick-locked 20/20, MERGED 0/20 | r meas 1[1..1] pred 0.461[0..0.975] K/Kc 3.34[0.394..20.5]
+P3 coarsest-digit cyclic shift     runs=10 band modes/run=2 | PSR-pass 0/40 osc | non-base: L2 20/20, winding 20/20, tick-locked 20/20, MERGED 0/20 | r meas 1[1..1] pred 1[1..1] K/Kc +Inf[+Inf..+Inf]
+  P3 seed0: shifts recovered by seed=see log; periods base [-0.0833 0.6 -0.417 0.35] shifted(after seed) [-0.0833 0.6 -0.417 0.35]; group-delay shift (samples, mode 0)=[0 0]; windings [0 1 0 0] vs [0 1 0 0]
+  P2 seed0: periods base [-0.0833 0.6 -0.417 0.35] permuted [0.0833 0.3 -0.167 -1.63e-17] windings [0 1 0 0] vs [0 1 -1 0]; nu base [0.0762 0.0766] perm [0.0323 0.962]
+  P3 raw (no seed) periods: base [-0.0833 0.6], coarsest-row-digit (sequence axis) shifted [-0.0833 0.6]; group delay (samples) of that raw shift on mode 0: 2.544 (sequence axis = rows here, coarsest row digit shift = 60/5 = 12 samples)
+  base band sequence (mode 0, seed 0): peak bin 5 PSR 8.79 uniq 1.82 nu 0.0762
+  P3 raw (no seed) periods: coarsest-col-digit (mode axis) shifted [-0.0833 0.6]; group delay (samples) of raw shift on mode 0: 0.000
+  P4 blend M_a = (1-a) base + a rand (rand = ternary noise, matched absmean), 10 seeds:
+    a=0.0                          runs=10 band modes/run=2 | PSR-pass 0/40 osc | non-base: L2 20/20, winding 20/20, tick-locked 20/20, MERGED 0/20 | r meas 1[1..1] pred 1[1..1] K/Kc +Inf[+Inf..+Inf]
+    a=0.1                          runs=10 band modes/run=2 | PSR-pass 1/40 osc | non-base: L2 20/20, winding 18/20, tick-locked 20/20, MERGED 0/20 | r meas 1[1..1] pred 0.999[0.998..1] K/Kc 700[233..1.54e+03]
+    a=0.2                          runs=10 band modes/run=2 | PSR-pass 1/40 osc | non-base: L2 20/20, winding 16/20, tick-locked 20/20, MERGED 0/20 | r meas 1[1..1] pred 0.998[0.995..0.999] K/Kc 333[108..837]
+    a=0.3                          runs=10 band modes/run=2 | PSR-pass 1/40 osc | non-base: L2 18/20, winding 13/20, tick-locked 19/20, MERGED 0/20 | r meas 0.981[0.81..1] pred 0.884[0..0.999] K/Kc 163[0.189..362]
+    a=0.5                          runs=10 band modes/run=2 | PSR-pass 0/40 osc | non-base: L2 17/20, winding 10/20, tick-locked 19/20, MERGED 0/20 | r meas 0.981[0.81..1] pred 0.776[0..0.993] K/Kc 26.4[0.187..68.5]
+    a=0.7                          runs=10 band modes/run=2 | PSR-pass 0/40 osc | non-base: L2 12/20, winding 8/20, tick-locked 20/20, MERGED 0/20 | r meas 1[1..1] pred 0.497[0..0.986] K/Kc 8.1[0.395..36]
+    a=0.9                          runs=10 band modes/run=2 | PSR-pass 0/40 osc | non-base: L2 13/20, winding 7/20, tick-locked 20/20, MERGED 0/20 | r meas 1[1..1] pred 0.437[0..0.983] K/Kc 5.86[0.415..30.2]
+    a=1.0                          runs=10 band modes/run=2 | PSR-pass 0/40 osc | non-base: L2 13/20, winding 4/20, tick-locked 20/20, MERGED 0/20 | r meas 1[1..1] pred 0.493[0..0.99] K/Kc 9.77[0.617..51.5]
+### hodgemix --dtft-tests --omega-update off
+
+=== grid [64 64] (radices [2 2 2 2 2 2] x [2 2 2 2 2 2]), band < (paper H2) ===
+P1 identical                       runs=10 band modes/run=0 | PSR-pass 0/0 osc | non-base: L2 0/0, winding 0/0, tick-locked 0/0, MERGED 0/0 | r meas 0[0..0] pred 0[0..0] K/Kc 0[0..0]
+P2 random row/col permutation      runs=10 band modes/run=0 | PSR-pass 0/0 osc | non-base: L2 0/0, winding 0/0, tick-locked 0/0, MERGED 0/0 | r meas 0[0..0] pred 0[0..0] K/Kc 0[0..0]
+P2 ternary noise (matched absmean) runs=10 band modes/run=0 | PSR-pass 0/0 osc | non-base: L2 0/0, winding 0/0, tick-locked 0/0, MERGED 0/0 | r meas 0[0..0] pred 0[0..0] K/Kc 0[0..0]
+P3 coarsest-digit cyclic shift     runs=10 band modes/run=0 | PSR-pass 0/0 osc | non-base: L2 0/0, winding 0/0, tick-locked 0/0, MERGED 0/0 | r meas 0[0..0] pred 0[0..0] K/Kc 0[0..0]
+  P4 blend M_a = (1-a) base + a rand (rand = ternary noise, matched absmean), 10 seeds:
+    a=0.0                          runs=10 band modes/run=0 | PSR-pass 0/0 osc | non-base: L2 0/0, winding 0/0, tick-locked 0/0, MERGED 0/0 | r meas 0[0..0] pred 0[0..0] K/Kc 0[0..0]
+    a=0.1                          runs=10 band modes/run=0 | PSR-pass 0/0 osc | non-base: L2 0/0, winding 0/0, tick-locked 0/0, MERGED 0/0 | r meas 0[0..0] pred 0[0..0] K/Kc 0[0..0]
+    a=0.2                          runs=10 band modes/run=0 | PSR-pass 0/0 osc | non-base: L2 0/0, winding 0/0, tick-locked 0/0, MERGED 0/0 | r meas 0[0..0] pred 0[0..0] K/Kc 0[0..0]
+    a=0.3                          runs=10 band modes/run=0 | PSR-pass 0/0 osc | non-base: L2 0/0, winding 0/0, tick-locked 0/0, MERGED 0/0 | r meas 0[0..0] pred 0[0..0] K/Kc 0[0..0]
+    a=0.5                          runs=10 band modes/run=0 | PSR-pass 0/0 osc | non-base: L2 0/0, winding 0/0, tick-locked 0/0, MERGED 0/0 | r meas 0[0..0] pred 0[0..0] K/Kc 0[0..0]
+    a=0.7                          runs=10 band modes/run=0 | PSR-pass 0/0 osc | non-base: L2 0/0, winding 0/0, tick-locked 0/0, MERGED 0/0 | r meas 0[0..0] pred 0[0..0] K/Kc 0[0..0]
+    a=0.9                          runs=10 band modes/run=0 | PSR-pass 0/0 osc | non-base: L2 0/0, winding 0/0, tick-locked 0/0, MERGED 0/0 | r meas 0[0..0] pred 0[0..0] K/Kc 0[0..0]
+    a=1.0                          runs=10 band modes/run=0 | PSR-pass 0/0 osc | non-base: L2 0/0, winding 0/0, tick-locked 0/0, MERGED 0/0 | r meas 0[0..0] pred 0[0..0] K/Kc 0[0..0]
+
+=== grid [60 90] (radices [5 3 2 2] x [5 3 3 2]), band < (paper H2) ===
+P1 identical                       runs=10 band modes/run=1 | PSR-pass 0/20 osc | non-base: L2 10/10, winding 10/10, tick-locked 10/10, MERGED 0/10 | r meas 1[1..1] pred 1[1..1] K/Kc +Inf[+Inf..+Inf]
+P2 random row/col permutation      runs=10 band modes/run=1 | PSR-pass 2/20 osc | non-base: L2 5/10, winding 4/10, tick-locked 5/10, MERGED 0/10 | r meas 0.977[0.899..1] pred 0.787[0.306..0.991] K/Kc 11.3[1.1..57.3]
+P2 ternary noise (matched absmean) runs=10 band modes/run=1 | PSR-pass 0/20 osc | non-base: L2 1/10, winding 2/10, tick-locked 1/10, MERGED 0/10 | r meas 0.757[0.541..0.999] pred 0.218[0..0.95] K/Kc 1.72[0.2..10.3]
+P3 coarsest-digit cyclic shift     runs=10 band modes/run=1 | PSR-pass 0/20 osc | non-base: L2 10/10, winding 10/10, tick-locked 10/10, MERGED 0/10 | r meas 1[1..1] pred 1[1..1] K/Kc +Inf[+Inf..+Inf]
+  P3 seed0: shifts recovered by seed=see log; periods base [-0.0833 0.6] shifted(after seed) [-0.0833 0.6]; group-delay shift (samples, mode 0)=[0 0]; windings [0 1] vs [0 1]
+  P2 seed0: periods base [-0.0833 0.6] permuted [0.0833 0.3] windings [0 1] vs [0 1]; nu base [0.0762] perm [0.0323]
+  P3 raw (no seed) periods: base [-0.0833 0.6], coarsest-row-digit (sequence axis) shifted [-0.0833 0.6]; group delay (samples) of that raw shift on mode 0: 2.544 (sequence axis = rows here, coarsest row digit shift = 60/5 = 12 samples)
+  base band sequence (mode 0, seed 0): peak bin 5 PSR 8.79 uniq 1.82 nu 0.0762
+  P3 raw (no seed) periods: coarsest-col-digit (mode axis) shifted [-0.0833 0.6]; group delay (samples) of raw shift on mode 0: 0.000
+  P4 blend M_a = (1-a) base + a rand (rand = ternary noise, matched absmean), 10 seeds:
+    a=0.0                          runs=10 band modes/run=1 | PSR-pass 0/20 osc | non-base: L2 10/10, winding 10/10, tick-locked 10/10, MERGED 0/10 | r meas 1[1..1] pred 1[1..1] K/Kc +Inf[+Inf..+Inf]
+    a=0.1                          runs=10 band modes/run=1 | PSR-pass 1/20 osc | non-base: L2 10/10, winding 8/10, tick-locked 10/10, MERGED 0/10 | r meas 1[1..1] pred 0.998[0.997..1] K/Kc 506[145..1.39e+03]
+    a=0.2                          runs=10 band modes/run=1 | PSR-pass 1/20 osc | non-base: L2 10/10, winding 6/10, tick-locked 10/10, MERGED 0/10 | r meas 1[1..1] pred 0.996[0.993..0.999] K/Kc 267[68..850]
+    a=0.3                          runs=10 band modes/run=1 | PSR-pass 1/20 osc | non-base: L2 9/10, winding 5/10, tick-locked 9/10, MERGED 0/10 | r meas 0.997[0.972..1] pred 0.966[0.722..0.999] K/Kc 218[2.09..800]
+    a=0.5                          runs=10 band modes/run=1 | PSR-pass 0/20 osc | non-base: L2 8/10, winding 4/10, tick-locked 8/10, MERGED 0/10 | r meas 0.954[0.567..1] pred 0.855[0..0.998] K/Kc 41.8[0.209..263]
+    a=0.7                          runs=10 band modes/run=1 | PSR-pass 0/20 osc | non-base: L2 2/10, winding 2/10, tick-locked 2/10, MERGED 0/10 | r meas 0.756[0.231..1] pred 0.36[0..0.995] K/Kc 11.9[0.2..94.9]
+    a=0.9                          runs=10 band modes/run=1 | PSR-pass 0/20 osc | non-base: L2 3/10, winding 1/10, tick-locked 3/10, MERGED 0/10 | r meas 0.689[0.0634..1] pred 0.353[0..0.982] K/Kc 4.4[0.209..27.9]
+    a=1.0                          runs=10 band modes/run=1 | PSR-pass 0/20 osc | non-base: L2 3/10, winding 1/10, tick-locked 3/10, MERGED 0/10 | r meas 0.671[0.0857..1] pred 0.369[0..0.996] K/Kc 15.9[0.31..132]
+### hodgemix --dtft-tests --band-inclusive --omega-update off
+
+=== grid [64 64] (radices [2 2 2 2 2 2] x [2 2 2 2 2 2]), band <= (inclusive) ===
+P1 identical                       runs=10 band modes/run=0 | PSR-pass 0/0 osc | non-base: L2 0/0, winding 0/0, tick-locked 0/0, MERGED 0/0 | r meas 0[0..0] pred 0[0..0] K/Kc 0[0..0]
+P2 random row/col permutation      runs=10 band modes/run=0 | PSR-pass 0/0 osc | non-base: L2 0/0, winding 0/0, tick-locked 0/0, MERGED 0/0 | r meas 0[0..0] pred 0[0..0] K/Kc 0[0..0]
+P2 ternary noise (matched absmean) runs=10 band modes/run=0 | PSR-pass 0/0 osc | non-base: L2 0/0, winding 0/0, tick-locked 0/0, MERGED 0/0 | r meas 0[0..0] pred 0[0..0] K/Kc 0[0..0]
+P3 coarsest-digit cyclic shift     runs=10 band modes/run=0 | PSR-pass 0/0 osc | non-base: L2 0/0, winding 0/0, tick-locked 0/0, MERGED 0/0 | r meas 0[0..0] pred 0[0..0] K/Kc 0[0..0]
+  P4 blend M_a = (1-a) base + a rand (rand = ternary noise, matched absmean), 10 seeds:
+    a=0.0                          runs=10 band modes/run=0 | PSR-pass 0/0 osc | non-base: L2 0/0, winding 0/0, tick-locked 0/0, MERGED 0/0 | r meas 0[0..0] pred 0[0..0] K/Kc 0[0..0]
+    a=0.1                          runs=10 band modes/run=0 | PSR-pass 0/0 osc | non-base: L2 0/0, winding 0/0, tick-locked 0/0, MERGED 0/0 | r meas 0[0..0] pred 0[0..0] K/Kc 0[0..0]
+    a=0.2                          runs=10 band modes/run=0 | PSR-pass 0/0 osc | non-base: L2 0/0, winding 0/0, tick-locked 0/0, MERGED 0/0 | r meas 0[0..0] pred 0[0..0] K/Kc 0[0..0]
+    a=0.3                          runs=10 band modes/run=0 | PSR-pass 0/0 osc | non-base: L2 0/0, winding 0/0, tick-locked 0/0, MERGED 0/0 | r meas 0[0..0] pred 0[0..0] K/Kc 0[0..0]
+    a=0.5                          runs=10 band modes/run=0 | PSR-pass 0/0 osc | non-base: L2 0/0, winding 0/0, tick-locked 0/0, MERGED 0/0 | r meas 0[0..0] pred 0[0..0] K/Kc 0[0..0]
+    a=0.7                          runs=10 band modes/run=0 | PSR-pass 0/0 osc | non-base: L2 0/0, winding 0/0, tick-locked 0/0, MERGED 0/0 | r meas 0[0..0] pred 0[0..0] K/Kc 0[0..0]
+    a=0.9                          runs=10 band modes/run=0 | PSR-pass 0/0 osc | non-base: L2 0/0, winding 0/0, tick-locked 0/0, MERGED 0/0 | r meas 0[0..0] pred 0[0..0] K/Kc 0[0..0]
+    a=1.0                          runs=10 band modes/run=0 | PSR-pass 0/0 osc | non-base: L2 0/0, winding 0/0, tick-locked 0/0, MERGED 0/0 | r meas 0[0..0] pred 0[0..0] K/Kc 0[0..0]
+
+=== grid [60 90] (radices [5 3 2 2] x [5 3 3 2]), band <= (inclusive) ===
+P1 identical                       runs=10 band modes/run=2 | PSR-pass 0/40 osc | non-base: L2 20/20, winding 20/20, tick-locked 20/20, MERGED 0/20 | r meas 1[1..1] pred 1[1..1] K/Kc +Inf[+Inf..+Inf]
+P2 random row/col permutation      runs=10 band modes/run=2 | PSR-pass 2/40 osc | non-base: L2 11/20, winding 4/20, tick-locked 10/20, MERGED 0/20 | r meas 0.89[0.739..0.999] pred 0.524[0..0.976] K/Kc 4.93[0.182..21]
+P2 ternary noise (matched absmean) runs=10 band modes/run=2 | PSR-pass 0/40 osc | non-base: L2 11/20, winding 8/20, tick-locked 11/20, MERGED 0/20 | r meas 0.823[0.668..0.999] pred 0.461[0..0.975] K/Kc 3.34[0.394..20.5]
+P3 coarsest-digit cyclic shift     runs=10 band modes/run=2 | PSR-pass 0/40 osc | non-base: L2 20/20, winding 20/20, tick-locked 20/20, MERGED 0/20 | r meas 1[1..1] pred 1[1..1] K/Kc +Inf[+Inf..+Inf]
+  P3 seed0: shifts recovered by seed=see log; periods base [-0.0833 0.6 -0.417 0.35] shifted(after seed) [-0.0833 0.6 -0.417 0.35]; group-delay shift (samples, mode 0)=[0 0]; windings [0 1 0 0] vs [0 1 0 0]
+  P2 seed0: periods base [-0.0833 0.6 -0.417 0.35] permuted [0.0833 0.3 -0.167 -1.63e-17] windings [0 1 0 0] vs [0 1 -1 0]; nu base [0.0762 0.0766] perm [0.0323 0.962]
+  P3 raw (no seed) periods: base [-0.0833 0.6], coarsest-row-digit (sequence axis) shifted [-0.0833 0.6]; group delay (samples) of that raw shift on mode 0: 2.544 (sequence axis = rows here, coarsest row digit shift = 60/5 = 12 samples)
+  base band sequence (mode 0, seed 0): peak bin 5 PSR 8.79 uniq 1.82 nu 0.0762
+  P3 raw (no seed) periods: coarsest-col-digit (mode axis) shifted [-0.0833 0.6]; group delay (samples) of raw shift on mode 0: 0.000
+  P4 blend M_a = (1-a) base + a rand (rand = ternary noise, matched absmean), 10 seeds:
+    a=0.0                          runs=10 band modes/run=2 | PSR-pass 0/40 osc | non-base: L2 20/20, winding 20/20, tick-locked 20/20, MERGED 0/20 | r meas 1[1..1] pred 1[1..1] K/Kc +Inf[+Inf..+Inf]
+    a=0.1                          runs=10 band modes/run=2 | PSR-pass 1/40 osc | non-base: L2 20/20, winding 18/20, tick-locked 20/20, MERGED 0/20 | r meas 1[1..1] pred 0.999[0.998..1] K/Kc 700[233..1.54e+03]
+    a=0.2                          runs=10 band modes/run=2 | PSR-pass 1/40 osc | non-base: L2 20/20, winding 16/20, tick-locked 20/20, MERGED 0/20 | r meas 1[1..1] pred 0.998[0.995..0.999] K/Kc 333[108..837]
+    a=0.3                          runs=10 band modes/run=2 | PSR-pass 1/40 osc | non-base: L2 18/20, winding 13/20, tick-locked 18/20, MERGED 0/20 | r meas 0.977[0.803..1] pred 0.884[0..0.999] K/Kc 163[0.189..362]
+    a=0.5                          runs=10 band modes/run=2 | PSR-pass 0/40 osc | non-base: L2 17/20, winding 10/20, tick-locked 17/20, MERGED 0/20 | r meas 0.957[0.8..1] pred 0.776[0..0.993] K/Kc 26.4[0.187..68.5]
+    a=0.7                          runs=10 band modes/run=2 | PSR-pass 0/40 osc | non-base: L2 12/20, winding 8/20, tick-locked 12/20, MERGED 0/20 | r meas 0.878[0.768..1] pred 0.497[0..0.986] K/Kc 8.1[0.395..36]
+    a=0.9                          runs=10 band modes/run=2 | PSR-pass 0/40 osc | non-base: L2 13/20, winding 7/20, tick-locked 13/20, MERGED 0/20 | r meas 0.865[0.715..1] pred 0.437[0..0.983] K/Kc 5.86[0.415..30.2]
+    a=1.0                          runs=10 band modes/run=2 | PSR-pass 0/40 osc | non-base: L2 13/20, winding 4/20, tick-locked 12/20, MERGED 0/20 | r meas 0.864[0.732..1] pred 0.493[0..0.99] K/Kc 9.77[0.617..51.5]

@@ -1,0 +1,4 @@
+# Local builds. The tools rebuild with go build.
+*.exe
+*.exe.prev
+*.test

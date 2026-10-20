@@ -1,0 +1,194 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,booktabs,longtable}
+\usepackage[hidelinks]{hyperref}
+\title{Ternary Conversion and Mixing of Open-Weight Models via Hodge--Kuramoto Alignment}
+\author{By Gregory Disney-Leugers, Encryptid Systems}
+\date{October 14, 2026 (version 2)}
+\newcommand{\RoundClip}{\operatorname{RoundClip}}
+\newcommand{\wrap}{\operatorname{wrap}}
+\begin{document}\maketitle
+\begin{abstract}
+We convert published open-weight checkpoints to the ternary ($-1,0,+1$) format of Microsoft BitNet b1.58 2B4T~\cite{bitnet2b4t} and mix them into it. Each weight matrix is a 1-cochain on the bipartite graph of its input and output channels. A mixed-radix factorization of each channel length orders channels into a multi-radix heap (MRH) keyed by ternary conversion error; a two-way (down/up) Laplacian is diagonalized by the mixed-radix DFT, which yields an exact spectral Hodge decomposition into gradient, curl and harmonic (low-bin) parts. Phase correlation per digit and Re-Basin weight matching~\cite{rebasin} seed the alignment; a discrete Kuramoto lock with the gains of the author's \texttt{jev\_kuramoto} oscillator engine aligns the harmonic modes; ternary-native TIES~\cite{ties} resolves the curl part. Whitney prolongation and de~Rham restriction~\cite{afw} resize between widths, a randomized Hadamard residual rotation~\cite{quarot,slicegpt} precedes absmean ternarization~\cite{bitnet158}, and a signed, invertible BNZ4 channel-map chunk records the mapping. Every constant is derived in Appendix~\ref{app:params}. We report only operator checks and tiny synthetic runs; large-model evaluation is given as a protocol.
+\end{abstract}
+
+\section{Setting and decisions}
+The base is BitNet b1.58 2B4T~\cite{bitnet2b4t}: every attention and feed-forward linear layer is ternary with one absmean scale, stored in the Champ packed format (four trits per byte plus a BF16 \texttt{weight\_scale}); embeddings and norms stay in BF16. Other open checkpoints (FP16/BF16/F32) are converted to that format and mixed into it. The pipeline order is fixed:
+align $\to$ resize $\to$ mix in full precision $\to$ ternarize (rotation + absmean) $\to$ distill into 2B4T and its adapters.
+Models that are already ternary on the same base (BitNet fine-tunes, Champ adapters) skip alignment and use ternary-native TIES directly. Teachers for distillation supply top-$k$ logits. Distillation is outside the code described here (Section~\ref{sec:protocol}).
+
+\section{Channel complex and Hodge decomposition}
+\textbf{Complex.} For a weight $W\in\mathbb{R}^{R\times C}$ the nodes of $K$ are the $C$ input and $R$ output channels (or their MRH buckets), the edges are the entries $(r,c)$, and the 2-cells are the elementary squares of the product of the two channel cycles. The channel map is the 1-cochain
+\begin{equation}M(r,c)=W_{rc}/\gamma_W,\qquad \gamma_W=\tfrac{1}{RC}\textstyle\sum|W_{rc}|.\tag{1}\end{equation}
+\textbf{Hodge decomposition}~\cite{lim,hirani}. With coboundaries $d_0,d_1$ and Hodge stars $\star_k$,
+\begin{equation}M=d_0\alpha\;\oplus\;\delta_1\beta\;\oplus\;h,\qquad \delta_1=\star_0^{-1}d_0^{\top}\star_1 ,\tag{2}\end{equation}
+\begin{equation}L_1=d_0\,\star_0^{-1}d_0^{\top}\star_1+\star_1^{-1}d_1^{\top}\star_2\,d_1,\qquad h\in\ker L_1 .\tag{3}\end{equation}
+With unit stars (DECLUT: $\star_1=I$, $\delta_1=-d_0^{\top}$ up to orientation) the three parts are orthogonal. The gradient part is global reorder and scale (absorbed by alignment); the curl part is merge conflict (resolved by ternary TIES); the harmonic part is shared structure (preserved under resizing and aligned by the Kuramoto lock).
+
+\textbf{Two-way Laplacian in the mixed-radix DFT domain.} The down Laplacian acts on the source (input-channel) side, the up Laplacian on the target (output-channel) side. Order each side by mixed-radix digits $N=r_1r_2\cdots r_m$ with every digit level circulant; the mixed-radix DFT~\cite{cooleytukey} diagonalizes the Laplacian:
+\begin{equation}\lambda_k=\sum_{j}\Bigl(2-2\cos\frac{2\pi k_j}{r_j}\Bigr),\qquad k=(k^{\mathrm{row}},k^{\mathrm{col}}).\tag{4}\end{equation}
+The spectral projectors are indicator sets on bins:
+\begin{equation}\begin{aligned}\mathcal G&=\{k:k^{\mathrm{row}}=0\ \text{or}\ k^{\mathrm{col}}=0\},\qquad \mathcal C=\text{all other bins},\\
+\mathcal H&=\{k\notin\mathcal G:\ \text{each side has exactly one digit }k_j\neq0,\ \text{and it is }k_j\in\{1,r_j-1\}\}.\end{aligned}\tag{5}\end{equation}
+$\mathcal G$ is exactly the image of the row/column potentials ($d_0\alpha$); $\mathcal H$ is ``the low bins of each digit'': the lowest nonzero bin of one digit on each side ($\lambda_k=\lambda^{\min}_{\mathrm{row}}+\lambda^{\min}_{\mathrm{col}}$ per digit pair); $\mathcal C$ carries the remaining rotational energy. By Parseval the three parts are orthogonal (Test S3).
+
+\section{Mixed-radix index and multi-radix heap}
+\textbf{Index length.} Factor a channel length into primes, coarsest digit (largest prime) first, e.g.\ $2560=5\times2^9$, $6912=3^3\times2^8$. The index keeps whole radix levels:
+\begin{equation}G(n)=\prod_{j\le J} r_j,\qquad J=\max\{J:\textstyle\prod_{j\le J}r_j\le 2^{2b}\},\ b=4 ,\tag{6}\end{equation}
+so $G(2560)=160$, $G(6912)=216$. $2^{2b}=256$ is two MRH levels of 16 buckets. Resizing keeps or drops DFT bins per radix level; only the low bins $\mathcal H$ are stored.
+
+\textbf{MRH key.} For each output (input) channel $c$, with $\RoundClip(x)=\max(-1,\min(1,\mathrm{round}(x)))$,
+\begin{equation}\kappa_c=\min\!\Bigl(2^{12}-1,\ \Bigl\lfloor 2^{12}\,\frac{\frac1m\sum_j|W_{cj}-\gamma\RoundClip(W_{cj}/\gamma)|}{\gamma}\Bigr\rfloor\Bigr),\tag{7}\end{equation}
+a 12-bit saturating integer key (as in the DMT chip arrival field), $\gamma=\gamma_W$, $\kappa_c=0$ if $\gamma=0$. Channels with the smallest conversion error pop first and are therefore matched, merged or split first.
+
+\textbf{Channel coordinate (spline knots).} The MRH pop order, ties broken FIFO by index, gives
+\begin{equation}x_c=(\mathrm{rank}_{(\kappa,c)}+\tfrac12)/n .\tag{8}\end{equation}
+\textbf{Bucket.} A tensor's MRH bucket is the top 4-bit digit of its median key:
+\begin{equation}b_W=\lfloor\operatorname{median}_c\kappa_c/2^{8}\rfloor\in\{0,\dots,15\}.\tag{9}\end{equation}
+
+\section{Resizing: Whitney prolongation and de~Rham restriction}
+On each side the index is a cycle of $G$ cell-centred nodes. A source channel map is carried onto the index by the degree-1 spline over $x_c$, which is the Whitney 0-form (hat-function) interpolant followed by the de~Rham map (evaluation at index nodes)~\cite{afw,whitney}:
+\begin{equation}\widehat M=\mathcal R_{G}\,\mathcal P_{x}\,M,\qquad (\mathcal P_x f)(y)=\sum_c f_c\,\phi_c(y),\ \phi_c\text{ hat functions on }\{x_c\}. \tag{10}\end{equation}
+The same operator (with the roles reversed) samples the index at the target channels; its per-channel weights $(\ell,1-t,t)$ are stored in the BNZ4 chunk. Depth (layers) uses the same hat on normalized depth:
+\begin{equation}w_{s}(u_t)=\omega_s\max\bigl(0,1-|u_s-u_t|(L_s-1)\bigr),\qquad u=\ell/(L-1),\tag{11}\end{equation}
+with $\omega_s$ the user mixing weight of model $s$ and $L_s$ its layer count ($w_s=\omega_s$ if $L_s=1$).
+For nested cycles the operators are, per digit axis,
+\begin{equation}\begin{aligned}
+&(d_0a)_e=a_{e+1}-a_e, && P_0a:\ (P_0a)_{2i}=a_i,\ (P_0a)_{2i+1}=\tfrac12(a_i+a_{i+1}),\\
+&P_1b:\ (P_1b)_{2e}=(P_1b)_{2e+1}=\tfrac12 b_e, && R_0:\ (R_0a)_i=a_{2i},\quad R_1:\ (R_1b)_e=b_{2e}+b_{2e+1},
+\end{aligned}\tag{26}\end{equation}
+which satisfy $d_0P_0=P_1d_0$, $R_0P_0=I$, $R_1P_1=I$, $d_0R_0=R_1d_0$, and map the harmonic 1-cochain of the cycle to a harmonic cochain ($L_1P_1h=0$), so cohomology is preserved (Test S5). (Equation~(26) is numbered to match the code.)
+
+\section{Alignment tuning algorithm}
+\textbf{Seed shifts (phase correlation per digit)}~\cite{reddy}. For grids $A$ (contributor) and $B$ (reference = base):
+\begin{equation}X=\frac{\widehat B\,\overline{\widehat A}}{|\widehat B\,\overline{\widehat A}|}\ (X=0\text{ where the product is }0),\qquad s_j=\arg\max_{t}\sum_{k:\,k_j=t}\mathcal F^{-1}X ,\tag{12}\end{equation}
+applied digit by digit (coarse to fine), as in the author's FFT correction chip.
+
+\textbf{Seed permutation (Re-Basin weight matching).} Rows then columns solve
+\begin{equation}\pi=\arg\max_{\pi\in S_G}\ \langle B,\,P_\pi A\rangle_F ,\tag{13}\end{equation}
+a linear assignment problem (Hungarian method). This is Git Re-Basin weight matching~\cite{rebasin}; exact optimal transport with uniform marginals and the same cost has the same optimum (Birkhoff--von Neumann: the LP optimum is attained at a permutation), so ``Re-Basin or OT'' coincide here.
+
+\textbf{Kuramoto lock on harmonics.} Each pair (model $i$, harmonic bin $m\in\mathcal H$) is an oscillator with phase $\theta=\arg\widehat M_i(m)-\arg\widehat M_{\mathrm{base}}(m)$ evolving by
+\begin{equation}\dot\theta_i=\omega_i+\sum_j K_{ij}\sin(\theta_j-\theta_i),\tag{14}\end{equation}
+\begin{equation}\omega_i=0 .\tag{14b}\end{equation}
+All oscillators of bin $m$ share eigenvalue $\lambda_m$, hence the same natural frequency; in the frame co-rotating at that frequency $\omega_i=0$. Time is discretized as one tick of the \texttt{jev\_kuramoto} engine (R-KTE-1, R-KTE-8: the neighbour term is the DEC Laplacian $-\delta_1 d_0\theta$ scaled by $2^{-g_\theta}$):
+\begin{equation}\theta_i\leftarrow\theta_i+\sum_jK_{ij}\sin(\theta_j-\theta_i),\qquad K_{ij}=2^{-g_\theta}\,\frac{c_{ij}}{d_{\max}},\quad c_{ij}=\begin{cases}1&\text{same MRH bucket or digit level}\\2^{-(g_\omega-g_\theta)}&\text{otherwise}\end{cases}\tag{15}\end{equation}
+with $g_\theta=4$, $g_\omega=8$, $d_{\max}=\max_i\sum_jc_{ij}$. By Gershgorin, $\lambda_{\max}(L_K)\le2\cdot2^{-g_\theta}<2$, so the explicit tick is stable. The heap-weight coupling is thus: strong ($2^{-4}$) within an MRH bucket or digit level, weak ($2^{-8}$) across.
+\begin{equation}\text{locked}_k\iff|\wrap(\theta_k-\theta_{\mathrm{ref}(k)})|\le W_{\mathrm{lock}}=\tfrac{2\pi}{16},\qquad \text{lost after }N_{\mathrm{lost}}=255\text{ ticks}.\tag{16}\end{equation}
+\begin{equation}r=\Bigl|\tfrac1n\textstyle\sum_k e^{i\theta_k}\Bigr|,\qquad r_m=\Bigl|\tfrac{1}{|S|}\textstyle\sum_{i}e^{i\theta_{i,m}}\Bigr| .\tag{17}\end{equation}
+\textbf{Anneal (coarse to fine, MRH-weighted).} Stage $s=0,\dots,D-1$ activates oscillators whose bin's finest nonzero digit is $\le s$ and ramps the coupling $K\cdot q/N_{\mathrm{lost}}$, $q=1..N_{\mathrm{lost}}$; refine then runs windows of $N_{\mathrm{lost}}$ ticks at full $K$, at most $D+2$ windows:
+\begin{equation}T_{\mathrm{anneal}}=D\,N_{\mathrm{lost}},\qquad T_{\mathrm{refine}}\le (D+2)N_{\mathrm{lost}}.\tag{18}\end{equation}
+\textbf{Merge.} For a bin whose base oscillator is locked, with locked set $S_m$ (members locked to the base), weights $w_i$ from (11) and window-averaged lag $\bar\phi_i=\arg\langle e^{i(\theta_i-\theta_{\mathrm{base}})}\rangle$:
+\begin{equation}\widehat H(m)=(1-r_m)\widehat H_{\mathrm{base}}(m)+r_m\frac{\sum_{i\in S_m}w_i|\widehat M_i(m)|e^{i(\arg\widehat M_{\mathrm{base}}(m)+\bar\phi_i)}}{\sum_{i\in S_m}w_i};\tag{19}\end{equation}
+unlocked bins stay with the base (or route to adapters).
+\textbf{Refine stop.} Re-project onto $\mathcal H$ each pass; stop when
+\begin{equation}\|\widehat H^{(p)}-\widehat H^{(p-1)}\|/\|\widehat H^{(p-1)}\|<2^{-8}\ \wedge\ |r^{(p)}-r^{(p-1)}|<2^{-8},\qquad p\le D+1. \tag{20}\end{equation}
+\textbf{Ternary TIES on the curl part}~\cite{ties}. Deltas $\Delta_i=\Pi_{\mathcal C}(M_i-M_{\mathrm{base}})$ are coded $t_i=\RoundClip(\Delta_i/\gamma_{\Delta_i})$; the elected sign is $\sigma=\operatorname{sgn}\sum_iw_it_i$ and
+\begin{equation}\Delta^\star=\frac{\sum_{i:t_i=\sigma\neq0}w_i\Delta_i}{\sum_{i:t_i=\sigma\neq0}w_i}.\tag{21}\end{equation}
+\textbf{Synthesis and resize.}
+\begin{equation}\begin{split}W_t=\bar\gamma\Bigl[&\mathcal R_t\mathcal P\bigl(\Pi_{\mathcal G}M_{\mathrm{base}}+\Pi_{\mathcal C}M_{\mathrm{base}}+\Delta^\star+\mathcal F^{-1}\widehat H\bigr)\\&\qquad+(I-\mathcal R_t\mathcal P\,\mathcal R_G\mathcal P_x)M_{\mathrm{base}}\Bigr],\qquad\bar\gamma=\frac{\sum w_s\gamma_s}{\sum w_s},\end{split}\tag{22}\end{equation}
+the last term (base residual, the two-grid complement) present only when the base has the target shape.
+
+\begin{center}\fbox{\begin{minipage}{0.93\linewidth}
+\textbf{Algorithm 1 (Hodge--Kuramoto alignment tuning, per target tensor).} Input: contributors $M_i$ on the index grid (10), weights $w_i$ (11), buckets (9).
+\begin{enumerate}\itemsep0pt
+\item \textbf{Seed:} phase-correlate each $M_i$ to the base digit by digit (12); Re-Basin rows then columns (13).
+\item Hodge-split each contributor in the DFT domain (4)--(5); ternary TIES on curl deltas (21).
+\item \textbf{Anneal:} oscillators on $\mathcal H$ with coupling (15), stages coarse$\to$fine digits (18).
+\item \textbf{Refine:} for $p=1,\dots,D+1$: tick windows of $N_{\mathrm{lost}}$ (15)--(16), merge (19), re-project on $\mathcal H$; stop at (20).
+\item Synthesize and resample at the target channels (22); rotate (24); ternarize (25).
+\item \textbf{Emit:} the BNZ4 channel-map chunk (Section~\ref{sec:bnz4}).
+\end{enumerate}\end{minipage}}\end{center}
+
+\section{Ternarization: rotation plus absmean}
+\textbf{Randomized Hadamard rotation}~\cite{quarot}. For hidden size $H$ let $b$ be the largest power of two dividing $H$ ($b=512$ for $H=2560$) and
+\begin{equation}Q=D\,(I_{H/b}\otimes H_b)/\sqrt b,\qquad D=\operatorname{diag}(\pm1)\ \text{Rademacher},\tag{23}\end{equation}
+orthogonal for any signs. Rotating the residual stream $x\mapsto Q^{\top}x$ leaves an RMSNorm transformer's function unchanged once each RMSNorm gain $g$ is folded into the readers that follow it (computational invariance~\cite{slicegpt,quarot}):
+\begin{equation}\begin{aligned}
+&\text{readers }(q,k,v,\text{gate},\text{up}):\ W\leftarrow W\operatorname{diag}(g)Q, &&\text{writers }(o,\text{down}):\ W\leftarrow Q^{\top}W,\\
+&\text{embedding }E\leftarrow EQ, &&\text{head }W_{\mathrm{lm}}\leftarrow W_{\mathrm{lm}}\operatorname{diag}(g_{\mathrm{final}})Q,\quad g\leftarrow\mathbf 1 .
+\end{aligned}\tag{24}\end{equation}
+BitNet's inner sub-norms act on the attention/FFN inner activations, not on the residual stream, and are untouched. A tied head is written untied. If any residual reader or writer lacks a recognized RMSNorm, rotation is not applied (logged), because invariance could not be guaranteed.
+\textbf{Absmean}~\cite{bitnet158}.
+\begin{equation}\gamma=\tfrac{1}{RC}\textstyle\sum|W|,\qquad \widetilde W=\RoundClip(W/\gamma),\qquad \widetilde W=0\ \text{if}\ \gamma=0 .\tag{25}\end{equation}
+
+\section{BNZ4 signed, invertible channel-map chunk}\label{sec:bnz4}
+Stored per tensor as \texttt{bnzmix.bnz4.<name>} (U8) beside the packed trits and \texttt{weight\_scale}; little-endian; a loader that reads it reproduces the mapping exactly.
+\begin{center}\footnotesize\begin{tabular}{lll}\toprule
+field&type&meaning\\\midrule
+magic, version&\texttt{"BNZ4"}, u16=1&\\
+name&u16 length + UTF-8&tensor name\\
+$R_{\mathrm{out}},C_{\mathrm{out}},G_r,G_c$&4$\times$u32&output shape, index grid (6)\\
+$n_r,n_c$, radices&u8,u8, $(n_r{+}n_c)\times$u8&digits, coarsest first\\
+$S$&u16&contributors; each: src u16, bucket u8 (9), weight f32 (11),\\
+&&\quad digit shifts $(n_r{+}n_c)\times$u8 (12), signed perms $G_r{+}G_c$ i32 (13)\\
+row/col prolongation&$(R_{\mathrm{out}}{+}C_{\mathrm{out}})\times$(u32,f32,f32)&left index node, hat weights (10)\\
+low bins&u32 $B$; $B\times$(u32,f32,f32)&bin index, Re, Im of $\widehat H$ on $\mathcal H$\\
+CRC-32&u32&IEEE CRC of all preceding bytes\\\bottomrule\end{tabular}\end{center}
+Permutation entries are $\pm(p+1)$: the sign is a channel sign flip, the magnitude the 1-based target index. The decoder rejects any entry set that is not a bijection, so every stored map is invertible (inverse: $p^{-1}$ with the same signs). The chunk travels inside the lossless BNZ container.
+
+\section{Measured results (tiny synthetic tests only)}
+All numbers are from the self-test and from tiny synthetic checkpoints (hidden size 16--32, 2--3 layers) in \texttt{ternmix-py/test}; no real or 2B-scale model was run.
+\begin{center}\footnotesize\begin{tabular}{ll}\toprule
+check&result\\\midrule
+S1 $\lambda_k$ vs dense Laplacian, $n\in\{12,16,30,60,64\}$&$\le 2\times10^{-14}$\\
+S2 explicit-complex Hodge (random stars): $\|L_1h\|$, cross terms&$5.7\times10^{-14}$, $\le 2\times10^{-17}$\\
+S3 spectral Hodge recon / cross terms ($32{\times}30$)&$1.0\times10^{-15}$ / $\le 9\times10^{-18}$\\
+S4 Hadamard $\max|QQ^\top-I|$, $H\in\{32,40,48,2560\}$&$\le1.1\times10^{-16}$\\
+S4 rotation invariance (RMSNorm reader, float32 weights)&$1.9\times10^{-7}$\\
+S5 $|d_0P_0-P_1d_0|$, $|R_0P_0-I|$, $|R_1P_1-I|$, $|L_1P_1h|$&$1.1\times10^{-16}$, 0, 0, 0\\
+S6 Kuramoto tick, 24 osc., spread $\pm\pi/4$ / $\pm0.95\pi$&$\langle r\rangle=0.99993$ / $0.99965$; 24/24 locked\\
+S7 BNZ4 round trip / CRC / non-bijective perm&exact / rejected / rejected\\
+S8 seed: phase correlation and Hungarian on known roll/perm&exact (0 error)\\
+tiny run, 3 sources, target config (21 tensors)&all lock passes converged, $\langle r\rangle=1.0$, locked $=n_{\mathrm{osc}}$\\
+tiny run BNZ round trip&byte-identical\\\bottomrule\end{tabular}\end{center}
+With $\omega_i=0$ and connected coupling, phase synchronization is the generic outcome~\cite{dorflerbullo,strogatz}, which is what the tiny runs show; the lock's informative output is the consensus lag $\bar\phi_i$ and the lost set, which stays empty unless contributors sit near anti-phase. Whether a non-zero, data-derived $\omega$ improves merges is an open question for the protocol below.
+
+\section{Measurement protocol (future work)}\label{sec:protocol}
+No large-model numbers are claimed. To be measured on BitNet b1.58 2B4T plus open checkpoints: perplexity and KL to the full-precision mix after ternarization, with and without rotation (24); merge KL with and without alignment (12)--(19); Hodge energy split $(\mathcal G,\mathcal C,\mathcal H)$ against merge KL; $r$ as a predictor of merge success; low-bin DFT energy fraction after MRH channel sorting (8); BNZ4 chunk size against a dense permutation; distillation into 2B4T and its adapters from top-$k$ teacher logits.
+
+\appendix
+\section{Parameter derivations}\label{app:params}
+\begin{longtable}{p{3.2cm}p{2.6cm}p{9.2cm}}\toprule
+term&value&derivation / source\\\midrule\endhead
+roles&q,k,v,o,gate,up,down,qkv&BitNet replaces every attention/FFN linear with BitLinear; embeddings and head stay high precision~\cite{bitnet2b4t}.\\
+index length (6)&$\le256$, whole radix levels&two MRH levels of 16 buckets (DMT three-level 16-bucket ordering unit); resizing by radix level (decision 4).\\
+spline degree / knots (8),(10)&degree 1, knots $=$ MRH pop order&Whitney 0-forms are the degree-1 hats~\cite{afw}; knots come from the heap order, no count or jitter needed.\\
+heap key (7)&12-bit, saturating&DMT chip 12-bit arrival field saturating at 4095.\\
+bucket (9), levels&16 buckets, top 4-bit digit&DMT ordering unit: 16 buckets per level.\\
+depth weight (11)&Whitney hat&same prolongation as (10) on the layer axis; replaces Gaussian width/cutoff.\\
+$\omega_i$ (14b)&0&same eigenvalue per bin $\Rightarrow$ equal natural frequencies; co-rotating frame.\\
+strong / weak $K$ (15)&$2^{-4}$ / $2^{-8}$&\texttt{jev\_kuramoto} gains $g_\theta=4$, $g_\omega=8$ (R-KTE-1, R-KTE-8).\\
+normalization $d_{\max}$ (15)&$\max_i\sum_jc_{ij}$&Gershgorin stability of the explicit tick.\\
+time step&1 tick&KTE is a per-tick update (R-KTE-1).\\
+lock window (16)&$1/16$ turn&KTE $W_{\mathrm{lock}}$ (R-KTE-2).\\
+lost / stage / window (16),(18)&255 ticks&KTE $N_{\mathrm{lost}}$.\\
+refine tol (20)&$2^{-8}$&BF16 has 8 significant bits: smaller changes are not representable in the stored model.\\
+max passes (20)&$D+1$&one pass per digit level plus the anneal pass.\\
+harmonic set (5)&lowest bin per digit&``harmonic and smooth modes occupy the low bins of each digit'' (v1).\\
+seed assignment (13)&Re-Basin weight matching&OT with uniform marginals has the same optimum (Birkhoff).\\
+phase-corr./absmean $\varepsilon$&none&division guarded exactly: $X=0$ where $|\cdot|=0$, $\widetilde W=0$ if $\gamma=0$.\\
+rotation (23)&randomized Hadamard&QuaRot~\cite{quarot}; invariance by gain folding~\cite{slicegpt}. Seed only fixes $D$; any $D$ is valid.\\
+base residual (22)&on&two-grid complement keeps detail finer than the index.\\
+float dtype&BF16&BitNet 2B4T stores non-ternary tensors in BF16~\cite{bitnet2b4t}.\\
+stored bins&$|\mathcal H|$&``store only low-frequency coefficients'' (decision 4).\\
+triangles&grid squares&data-free: 2-cells of the product channel cycles; co-activation triangles need calibration data (open).\\\bottomrule
+\end{longtable}
+
+\begin{thebibliography}{99}
+\bibitem{bitnet2b4t} S.~Ma, H.~Wang, S.~Huang, X.~Zhang, et al. BitNet b1.58 2B4T Technical Report. arXiv:2504.12285, 2025.
+\bibitem{bitnet158} S.~Ma, H.~Wang, L.~Ma, L.~Wang, et al. The Era of 1-bit LLMs: All Large Language Models are in 1.58 Bits. arXiv:2402.17764, 2024.
+\bibitem{rebasin} S.~K.~Ainsworth, J.~Hayase, S.~Srinivasa. Git Re-Basin: Merging Models modulo Permutation Symmetries. ICLR 2023; arXiv:2209.04836.
+\bibitem{ties} P.~Yadav, D.~Tam, L.~Choshen, C.~Raffel, M.~Bansal. TIES-Merging: Resolving Interference When Merging Models. NeurIPS 2023; arXiv:2306.01708.
+\bibitem{quarot} S.~Ashkboos, A.~Mohtashami, M.~L.~Croci, B.~Li, et al. QuaRot: Outlier-Free 4-Bit Inference in Rotated LLMs. NeurIPS 2024; arXiv:2404.00456.
+\bibitem{slicegpt} S.~Ashkboos, M.~L.~Croci, M.~Gennari do Nascimento, T.~Hoefler, J.~Hensman. SliceGPT: Compress Large Language Models by Deleting Rows and Columns. ICLR 2024; arXiv:2401.15024.
+\bibitem{lim} L.-H.~Lim. Hodge Laplacians on Graphs. SIAM Review 62(3):685--715, 2020.
+\bibitem{hirani} A.~N.~Hirani. Discrete Exterior Calculus. PhD thesis, California Institute of Technology, 2003. doi:10.7907/ZHY8-V329.
+\bibitem{afw} D.~N.~Arnold, R.~S.~Falk, R.~Winther. Finite element exterior calculus, homological techniques, and applications. Acta Numerica 15:1--155, 2006.
+\bibitem{whitney} Whitney forms as used in~\cite{afw}, Sec.~3--5.
+\bibitem{cooleytukey} J.~W.~Cooley, J.~W.~Tukey. An algorithm for the machine calculation of complex Fourier series. Mathematics of Computation 19:297--301, 1965.
+\bibitem{reddy} B.~S.~Reddy, B.~N.~Chatterji. An FFT-based technique for translation, rotation, and scale-invariant image registration. IEEE Trans. Image Processing 5(8):1266--1271, 1996.
+\bibitem{dorflerbullo} F.~D\"orfler, F.~Bullo. Synchronization in complex networks of phase oscillators: A survey. Automatica 50(6):1539--1564, 2014.
+\bibitem{strogatz} S.~H.~Strogatz. From Kuramoto to Crawford: exploring the onset of synchronization in populations of coupled oscillators. Physica D 143:1--20, 2000.
+\end{thebibliography}
+\end{document}

@@ -1,0 +1,62 @@
+<!doctype html><meta charset="utf-8"><title>hodgemix -> bnz-loader e2e</title><pre id="log"></pre>
+<script type="module">
+// Uses Gregory's bnz-loader JS unchanged (symlinked). Checks a hodgemix BNZ4 output:
+// (1) header+index, Ed25519 sig; (2) every segment decoded by BNZ4Dec (WGSL for methods 4/5) == the
+// same bytes read straight from the ternary safetensors; (3) runtime weight buffers after the streamed
+// load == after the reference safetensors upload (weightDigest), and logits identical.
+import { BNZLoader } from './bnz-loader.js';
+import { BitNetRT } from './bitnet-rt.js';
+import { decompress } from './vendor/fzstd.mjs';
+const log = (s) => { document.getElementById('log').textContent += s + '\n'; fetch('/log', { method: 'POST', body: s }); };
+const hex = async (b) => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', b)), (x) => x.toString(16).padStart(2, '0')).join('');
+const PROMPT = [1, 5, 9, 3, 17];
+const res = {};
+try {
+  const ad = await navigator.gpu.requestAdapter();
+  const device = await ad.requestDevice();
+  device.addEventListener('uncapturederror', (e) => log('GPU error: ' + e.error.message));
+  res.adapter = ad.info?.description || ad.info?.vendor;
+  const config = await (await fetch('/config.json')).json();
+  // (1)+(2)
+  const L = await BNZLoader.open({ url: '/model.bnz', device, zstd: (b) => decompress(b), cache: false,
+    publicKey: (await (await fetch('/pubkey')).text()).trim(), log });
+  res.signed = L.signed;
+  const get = async (a, n) => new Uint8Array(await (await fetch('/model.safetensors', { headers: { Range: `bytes=${a}-${a + n - 1}` } })).arrayBuffer());
+  const stAll = await get(0, L.index.orig_size);
+  const methods = {}; let segOK = 0, segBad = [];
+  for (const s of L.index.segments) {
+    const pay = new Uint8Array(await (await fetch('/model.bnz', { headers: { Range: `bytes=${L.base + s.off}-${L.base + s.off + s.len - 1}` } })).arrayBuffer());
+    const { gpu, raw } = await L.dec.decode(s, pay, true);
+    if (gpu) gpu.destroy();
+    const want = stAll.subarray(s.raw_off, s.raw_off + s.raw_len);
+    const same = raw.length === want.length && raw.every((v, i) => v === want[i]) && (await hex(raw)) === s.sha256;
+    methods[s.method] = (methods[s.method] || 0) + 1;
+    if (same) segOK++; else segBad.push(s.name);
+  }
+  res.segments = L.index.segments.length; res.segmentsBitExact = segOK; res.segmentsBad = segBad; res.methods = methods;
+  res.wholeFileSha = (await hex(stAll)) === L.index.sha256;
+  // (3) reference upload
+  const A = await BitNetRT.create({ device, kernelUrl: '/kernels', config, ctx: 16 });
+  await A.uploadSafetensors('/model.safetensors');
+  res.refDigest = await A.weightDigest();
+  res.refLogits = await hex(await A.forward(PROMPT, 0));
+  // streamed through the loader
+  const B = await BitNetRT.create({ device, kernelUrl: '/kernels', config, ctx: 16 });
+  const L2 = await BNZLoader.open({ url: '/model.bnz', device, zstd: (b) => decompress(b), cache: false,
+    publicKey: (await (await fetch('/pubkey')).text()).trim(), log });
+  const plan = B.plan(L2.index, { order: 'exec', tokens: PROMPT });
+  res.groups = plan.groups.map((g) => g.key + ':' + g.segs.length);
+  const done = L2.start({ groups: plan.groups, sinks: (s) => B.sinks(s) });
+  const lg = await B.prefillStreaming(PROMPT, 0, { waitEmbed: (t) => L2.ready(plan.embKey(t)),
+    waitLayer: (l) => L2.ready(`layer.${l}`), waitHead: () => Promise.all([L2.ready('norm'), ...plan.embGroups.map((k) => L2.ready(k))]) });
+  await done;
+  res.streamDigest = await B.weightDigest();
+  res.streamLogits = await hex(lg);
+  res.loaderStats = { retries: L2.stats.retries, segments: L2.stats.segments };
+  const f = new Float32Array(lg.buffer, lg.byteOffset, lg.byteLength / 4);
+  res.logitsFinite = f.every(Number.isFinite);
+  res.PASS = res.signed && segBad.length === 0 && res.wholeFileSha && res.refDigest === res.streamDigest && res.refLogits === res.streamLogits && res.logitsFinite;
+  log('RESULT ' + JSON.stringify(res));
+} catch (e) { log('FAIL ' + (e.stack || e)); }
+fetch('/done', { method: 'POST' });
+</script>

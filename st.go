@@ -1,0 +1,478 @@
+package main
+
+// safetensors reader (ordered header, offset reads) and two-pass writer (temp file + header at close).
+
+import (
+	"bufio"
+	"bytes"
+	"encoding/binary"
+	"encoding/json"
+	"fmt"
+	"hodgemix/eval"
+	"io"
+	"math"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"sync"
+)
+
+type TInfo struct {
+	Dtype string  `json:"dtype"`
+	Shape []int   `json:"shape"`
+	Off   []int64 `json:"data_offsets"`
+}
+
+type ST struct {
+	Path  string
+	f     *os.File
+	base  int64
+	Keys  []string
+	H     map[string]TInfo
+	Meta  [][2]string
+	owner map[string]*ST // sharded checkpoint: the shard that holds each tensor (nil for one file)
+}
+
+// OpenST opens a safetensors model: exactly the files set for it (eval.ShardsOf; several files are one
+// model's shards, read as one), else the one file path. Nothing is looked up beside it.
+func OpenST(path string) (*ST, error) {
+	if fs := eval.ShardsOf(path); len(fs) > 1 {
+		return openShards(path, fs)
+	}
+	return openST(path)
+}
+
+func openShards(path string, files []string) (*ST, error) {
+	s := &ST{Path: path, H: map[string]TInfo{}, owner: map[string]*ST{}}
+	for _, f := range files {
+		sh, err := openST(f)
+		if err != nil {
+			return nil, err
+		}
+		for _, k := range sh.Keys {
+			if _, dup := s.H[k]; dup {
+				return nil, fmt.Errorf("%s: tensor %s is in two of its shards", path, k)
+			}
+			s.Keys = append(s.Keys, k)
+			s.H[k] = sh.H[k]
+			s.owner[k] = sh
+		}
+		s.Meta = append(s.Meta, sh.Meta...)
+	}
+	if len(s.Keys) == 0 {
+		return nil, fmt.Errorf("%s: no tensors", path)
+	}
+	return s, nil
+}
+
+// Paper: no equation (helper: I/O, progress or utility)
+func openST(path string) (*ST, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	var hb [8]byte
+	if _, err := f.ReadAt(hb[:], 0); err != nil {
+		return nil, err
+	}
+	n := int64(binary.LittleEndian.Uint64(hb[:]))
+	hj := make([]byte, n)
+	if _, err := f.ReadAt(hj, 8); err != nil {
+		return nil, err
+	}
+	s := &ST{Path: path, f: f, base: 8 + n, H: map[string]TInfo{}}
+	dec := json.NewDecoder(bytes.NewReader(hj))
+	if _, err := dec.Token(); err != nil {
+		return nil, err
+	}
+	for dec.More() {
+		t, err := dec.Token()
+		if err != nil {
+			return nil, err
+		}
+		k := t.(string)
+		if k == "__metadata__" {
+			var m map[string]any
+			var raw json.RawMessage
+			dec.Decode(&raw)
+			json.Unmarshal(raw, &m)
+			// keep header order
+			d2 := json.NewDecoder(bytes.NewReader(raw))
+			d2.Token()
+			for d2.More() {
+				kt, _ := d2.Token()
+				var v any
+				d2.Decode(&v)
+				s.Meta = append(s.Meta, [2]string{kt.(string), fmt.Sprint(v)})
+			}
+			continue
+		}
+		var ti TInfo
+		if err := dec.Decode(&ti); err != nil {
+			return nil, err
+		}
+		s.Keys = append(s.Keys, k)
+		s.H[k] = ti
+	}
+	return s, nil
+}
+
+// Paper: no equation (helper: I/O, progress or utility)
+func (s *ST) Has(k string) bool { _, ok := s.H[k]; return ok }
+
+// Paper: no equation (helper: I/O, progress or utility)
+func (s *ST) Raw(k string) ([]byte, error) {
+	if o := s.owner[k]; o != nil {
+		return o.Raw(k)
+	}
+	t, ok := s.H[k]
+	if !ok {
+		return nil, fmt.Errorf("%s: no tensor %s", s.Path, k)
+	}
+	b := make([]byte, t.Off[1]-t.Off[0])
+	_, err := s.f.ReadAt(b, s.base+t.Off[0])
+	return b, err
+}
+
+// Paper: no equation (helper: I/O, progress or utility)
+func numel(sh []int) int {
+	n := 1
+	for _, v := range sh {
+		n *= v
+	}
+	return n
+}
+
+// Paper: no equation (helper: I/O, progress or utility)
+func f16to32(h uint16) float32 {
+	sgn := uint32(h>>15) << 31
+	e := int((h >> 10) & 31)
+	m := uint32(h & 1023)
+	switch {
+	case e == 0:
+		if m == 0 {
+			return math.Float32frombits(sgn)
+		}
+		v := float32(m) / 1024 / 16384
+		if sgn != 0 {
+			v = -v
+		}
+		return v
+	case e == 31:
+		return math.Float32frombits(sgn | 0x7f800000 | m<<13)
+	}
+	return math.Float32frombits(sgn | uint32(e-15+127)<<23 | m<<13)
+}
+
+// Paper: no equation (helper: I/O, progress or utility)
+func f32to16(f float32) uint16 { // round-to-nearest-even, as numpy astype(float16)
+	b := math.Float32bits(f)
+	sgn := uint16(b>>16) & 0x8000
+	e := int((b>>23)&255) - 127 + 15
+	m := b & 0x7fffff
+	if (b>>23)&255 == 255 {
+		if m != 0 {
+			return sgn | 0x7e00
+		}
+		return sgn | 0x7c00
+	}
+	if e >= 31 {
+		return sgn | 0x7c00
+	}
+	if e <= 0 {
+		if e < -10 {
+			return sgn
+		}
+		m |= 0x800000
+		sh := uint32(14 - e)
+		v := m >> sh
+		rem := m & (1<<sh - 1)
+		half := uint32(1) << (sh - 1)
+		if rem > half || (rem == half && v&1 == 1) {
+			v++
+		}
+		return sgn | uint16(v)
+	}
+	v := uint32(e)<<10 | m>>13
+	rem := m & 0x1fff
+	if rem > 0x1000 || (rem == 0x1000 && v&1 == 1) {
+		v++
+	}
+	return sgn | uint16(v)
+}
+
+// Paper: no equation (helper: I/O, progress or utility)
+func bf16(f float32) uint16 {
+	u := math.Float32bits(f)
+	return uint16((u + 0x7FFF + ((u >> 16) & 1)) >> 16)
+}
+
+// F32 reads a float tensor as float32 (BF16/F16/F32/F64).
+// Paper: no equation (helper: I/O, progress or utility)
+func (s *ST) F32(k string) ([]float32, error) {
+	b, err := s.Raw(k)
+	if err != nil {
+		return nil, err
+	}
+	t := s.H[k]
+	n := numel(t.Shape)
+	o := make([]float32, n)
+	switch t.Dtype {
+	case "BF16":
+		for i := range o {
+			o[i] = math.Float32frombits(uint32(binary.LittleEndian.Uint16(b[2*i:])) << 16)
+		}
+	case "F16":
+		for i := range o {
+			o[i] = f16to32(binary.LittleEndian.Uint16(b[2*i:]))
+		}
+	case "F32":
+		for i := range o {
+			o[i] = math.Float32frombits(binary.LittleEndian.Uint32(b[4*i:]))
+		}
+	case "F64":
+		for i := range o {
+			o[i] = float32(math.Float64frombits(binary.LittleEndian.Uint64(b[8*i:])))
+		}
+	case "U8":
+		for i := range o {
+			o[i] = float32(b[i])
+		}
+	case "I8":
+		for i := range o {
+			o[i] = float32(int8(b[i]))
+		}
+	default:
+		return nil, fmt.Errorf("%s: dtype %s not float", k, t.Dtype)
+	}
+	return o, nil
+}
+
+// Paper: no equation (helper: I/O, progress or utility)
+func scaleKey(k string) string { return strings.TrimSuffix(k, "weight") + "weight_scale" }
+
+// Paper: no equation (helper: I/O, progress or utility)
+func (s *ST) isPacked(k string) bool {
+	t := s.H[k]
+	return t.Dtype == "U8" && strings.HasSuffix(k, ".weight") && s.Has(scaleKey(k))
+}
+
+// Paper: no equation (helper: I/O, progress or utility)
+func (s *ST) LogicalShape(k string) []int {
+	t := s.H[k]
+	if s.isPacked(k) {
+		return append([]int{t.Shape[0] * 4}, t.Shape[1:]...)
+	}
+	return t.Shape
+}
+
+// LoadDense: float32 weight; packed BitNet weights (U8 + weight_scale) are dequantized (t-1)*scale (Champ/edgellm convention).
+// Paper: Sec.4 base is ternary: dequantize (t-1)*weight_scale (BitNet b1.58 2B4T autobitlinear; edgellm bitlinear.wgsl)
+func (s *ST) LoadDense(k string) ([]float32, []int, error) {
+	if s.isPacked(k) {
+		sc, err := s.F32(scaleKey(k))
+		if err != nil {
+			return nil, nil, err
+		}
+		b, err := s.Raw(k)
+		if err != nil {
+			return nil, nil, err
+		}
+		sh := s.H[k].Shape
+		R4 := sh[0]
+		C := numel(sh[1:])
+		o := make([]float32, 4*len(b))
+		for sI := 0; sI < 4; sI++ {
+			for i, v := range b {
+				o[sI*R4*C+i] = float32(int((v>>(2*sI))&3)-1) * sc[0]
+			}
+		}
+		for _, lb := range s.limbsOf(k) { // dynamic MRH limbs (limbs.go): the weight is their sum
+			c := (lb.r - 1) / 2
+			for i := range o {
+				o[i] += float32(lb.s * float64(int(lb.d[i])-c))
+			}
+		}
+		return o, s.LogicalShape(k), nil
+	}
+	v, err := s.F32(k)
+	return v, s.H[k].Shape, err
+}
+
+// ---------------- writer ----------------
+type STW struct {
+	path string
+	tmp  *os.File
+	bw   *bufio.Writer
+	keys []string
+	h    map[string]TInfo
+	off  int64
+	Meta [][2]string
+}
+
+// Paper: no equation (helper: I/O, progress or utility)
+func NewSTW(path string, meta [][2]string) (*STW, error) {
+	t, err := os.CreateTemp(filepath.Dir(path), ".hodgemix-*.tmp")
+	if err != nil {
+		return nil, err
+	}
+	tempMu.Lock()
+	tempFiles[t.Name()] = t
+	tempMu.Unlock()
+	return &STW{path: path, tmp: t, bw: bufio.NewWriterSize(t, 1<<20), h: map[string]TInfo{}, Meta: meta}, nil
+}
+
+// Temp files of writers that have not closed; removeTemps deletes them when a run stops early
+// (die, Ctrl+C), so an interrupted run leaves no .hodgemix-*.tmp behind.
+var (
+	tempMu    sync.Mutex
+	tempFiles = map[string]*os.File{}
+)
+
+func removeTemps() {
+	tempMu.Lock()
+	defer tempMu.Unlock()
+	for p, f := range tempFiles {
+		_ = f.Close()
+		_ = os.Remove(p)
+		delete(tempFiles, p)
+	}
+}
+
+// Patch overwrites the bytes of a tensor already added (same length), before Close.
+func (w *STW) Patch(k string, b []byte) error {
+	t, ok := w.h[k]
+	if !ok || int64(len(b)) != t.Off[1]-t.Off[0] {
+		return fmt.Errorf("patch %s: no tensor of %d bytes", k, len(b))
+	}
+	if err := w.bw.Flush(); err != nil {
+		return err
+	}
+	_, err := w.tmp.WriteAt(b, t.Off[0])
+	return err
+}
+
+// Paper: no equation (helper: I/O, progress or utility)
+func (w *STW) Add(k, dtype string, shape []int, b []byte) {
+	if shape == nil {
+		shape = []int{}
+	}
+	w.keys = append(w.keys, k)
+	w.h[k] = TInfo{dtype, shape, []int64{w.off, w.off + int64(len(b))}}
+	w.bw.Write(b)
+	w.off += int64(len(b))
+}
+
+// Paper: no equation (helper: I/O, progress or utility)
+func (w *STW) AddF32(k string, shape []int, a []float32) {
+	b := make([]byte, 4*len(a))
+	for i, v := range a {
+		binary.LittleEndian.PutUint32(b[4*i:], math.Float32bits(v))
+	}
+	w.Add(k, "F32", shape, b)
+}
+
+// Paper: no equation (helper: I/O, progress or utility)
+func (w *STW) AddI32(k string, shape []int, a []int32) {
+	b := make([]byte, 4*len(a))
+	for i, v := range a {
+		binary.LittleEndian.PutUint32(b[4*i:], uint32(v))
+	}
+	w.Add(k, "I32", shape, b)
+}
+
+// Paper: no equation (helper: I/O, progress or utility)
+func (w *STW) AddBF16(k string, shape []int, a []float32) {
+	b := make([]byte, 2*len(a))
+	for i, v := range a {
+		binary.LittleEndian.PutUint16(b[2*i:], bf16(v))
+	}
+	w.Add(k, "BF16", shape, b)
+}
+
+// Paper: no equation (helper: I/O, progress or utility)
+func (w *STW) AddF16(k string, shape []int, a []float32) {
+	b := make([]byte, 2*len(a))
+	for i, v := range a {
+		binary.LittleEndian.PutUint16(b[2*i:], f32to16(v))
+	}
+	w.Add(k, "F16", shape, b)
+}
+
+// Paper: no equation (helper: I/O, progress or utility)
+func (w *STW) AddFloat(k string, shape []int, a []float32, fd string) {
+	switch fd {
+	case "BF16":
+		w.AddBF16(k, shape, a)
+	case "F16":
+		w.AddF16(k, shape, a)
+	default:
+		w.AddF32(k, shape, a)
+	}
+}
+
+// Paper: no equation (helper: I/O, progress or utility)
+func (w *STW) Close(prog func(done, tot int64)) error {
+	w.bw.Flush()
+	var hb bytes.Buffer
+	hb.WriteString("{")
+	for _, k := range w.keys {
+		kj, _ := json.Marshal(k)
+		vj, _ := json.Marshal(w.h[k])
+		hb.Write(kj)
+		hb.WriteString(":")
+		hb.Write(vj)
+		hb.WriteString(",")
+	}
+	hb.WriteString(`"__metadata__":{`)
+	for i, kv := range w.Meta {
+		if i > 0 {
+			hb.WriteString(",")
+		}
+		a, _ := json.Marshal(kv[0])
+		b, _ := json.Marshal(kv[1])
+		hb.Write(a)
+		hb.WriteString(":")
+		hb.Write(b)
+	}
+	hb.WriteString("}}")
+	for hb.Len()%8 != 0 {
+		hb.WriteString(" ")
+	}
+	f, err := os.Create(w.path)
+	if err != nil {
+		return err
+	}
+	var nb [8]byte
+	binary.LittleEndian.PutUint64(nb[:], uint64(hb.Len()))
+	f.Write(nb[:])
+	f.Write(hb.Bytes())
+	w.tmp.Seek(0, 0)
+	buf := make([]byte, 1<<22)
+	var done int64
+	for {
+		n, err := w.tmp.Read(buf)
+		if n > 0 {
+			f.Write(buf[:n])
+			done += int64(n)
+			if prog != nil {
+				prog(done, w.off)
+			}
+		}
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
+		}
+	}
+	w.tmp.Close()
+	os.Remove(w.tmp.Name())
+	tempMu.Lock()
+	delete(tempFiles, w.tmp.Name())
+	tempMu.Unlock()
+	return f.Close()
+}
+
+var _ = sort.Ints

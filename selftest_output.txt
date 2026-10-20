@@ -1,0 +1,53 @@
+lambda 12 [3 2 2] max|eig-formula|=3.553e-15 offdiag(F L F^-1)=4.595e-15 |diag-formula|=1.776e-15
+lambda 16 [2 2 2 2] max|eig-formula|=6.217e-15 offdiag(F L F^-1)=2.449e-16 |diag-formula|=0.000e+00
+lambda 30 [5 3 2] max|eig-formula|=1.066e-14 offdiag(F L F^-1)=5.147e-15 |diag-formula|=3.553e-15
+lambda 60 [5 3 2 2] max|eig-formula|=1.954e-14 offdiag(F L F^-1)=9.536e-15 |diag-formula|=1.066e-14
+lambda 64 [2 2 2 2 2 2] max|eig-formula|=1.954e-14 offdiag(F L F^-1)=2.449e-16 |diag-formula|=0.000e+00
+hodge(complex K) unit stars: L1h=1.247e-14 gh=1.315e-17 ch=3.843e-17 gc=7.120e-18 d1d0=4e-16 cg_iters=32 energy=[0.1270 0.7867 0.0863]
+hodge(complex K) random stars: L1h=5.653e-14 gh=1.902e-17 ch=3.967e-18 gc=2.251e-19 d1d0=4e-16 cg_iters=58 energy=[0.1266 0.8017 0.0717]
+spectral hodge [12 8] (low bins Eq.5): recon=5.55e-16 <g,c>=6.51e-19 <g,h>=1.63e-19 <c,h>=3.42e-18 grad-is-potential=1.11e-16 energy=[0.1287 0.7532 0.1182]
+spectral hodge [32 30] (low bins Eq.5): recon=1.03e-15 <g,c>=8.77e-18 <g,h>=1.63e-18 <c,h>=1.97e-18 grad-is-potential=2.22e-16 energy=[0.0645 0.9115 0.0240]
+ternary TIES: got [1 -1] want [1 -1]
+seed phase-correlation: shifts=[0 0 1 1 0 0] max|aligned-ref|=0.0e+00
+seed assignment (Hungarian): max|aligned-ref|=0.0e+00
+pack 4 trits/U8 round-trip: true
+T1 hadamard H=32 block=32 max|QQ^T-I|=1.11e-16
+T1 hadamard H=40 block=8 max|QQ^T-I|=1.11e-16
+T1 hadamard H=48 block=16 max|QQ^T-I|=0.00e+00
+T1 hadamard H=2560 block=512 max|QQ^T-I|=1.11e-16
+T2 rotation invariance (RMSNorm reader, folded gain): max|y_rot - y|=1.91e-07 (float32 weights)
+T3 whitney/de Rham: |dP0-P1d|=1.1e-16 |R0P0-I|=0.0e+00 |R1P1-I|=0.0e+00 |dR0-R1d|=0.0e+00 |L1 P1 h|=0.0e+00 (harmonic kept)
+T4 n=8 radices=[2 2 2] index=8 radices(index)=[2 2 2]
+T4 n=16 radices=[2 2 2 2] index=16 radices(index)=[2 2 2 2]
+T4 n=24 radices=[3 2 2 2] index=24 radices(index)=[3 2 2 2]
+T4 n=40 radices=[5 2 2 2] index=40 radices(index)=[5 2 2 2]
+T4 n=2560 radices=[5 2 2 2 2 2 2 2 2 2] index=160 radices(index)=[5 2 2 2 2 2]
+T4 n=6912 radices=[3 3 3 2 2 2 2 2 2 2 2] index=216 radices(index)=[3 3 3 2 2 2]
+T4 grid [16 16] low/harmonic bins=16 of 256 levels=4
+T4 grid [160 216] low/harmonic bins=63 of 34560 levels=6
+selftest anneal+refine [................]   0.0% 0/2040 el 0m00s eta --                                                                       [     0.2s]         anneal stage 1/3 (digit level 0): r=0.999819 active=8
+selftest anneal+refine [##..............]  12.5% 255/2040 el 0m00s eta 0m00s                                                                            [     0.2s]         anneal stage 2/3 (digit level 1): r=0.992287 active=16
+selftest anneal+refine [####............]  25.0% 510/2040 el 0m00s eta 0m00s                                                                            [     0.2s]         anneal stage 3/3 (digit level 2): r=0.997519 active=24
+selftest anneal+refine [######..........]  37.5% 765/2040 el 0m00s eta 0m00s                                                                            T5 kuramoto tick, initial spread +-0.79 rad: <r>=0.999928 locked=24/24 converged=true ticks=1275
+selftest anneal+refine [................]   0.0% 0/2040 el 0m00s eta --                                                                       [     0.2s]         anneal stage 1/3 (digit level 0): r=0.957466 active=8
+selftest anneal+refine [##..............]  12.5% 255/2040 el 0m00s eta 0m00s                                                                            [     0.2s]         anneal stage 2/3 (digit level 1): r=0.886899 active=16
+selftest anneal+refine [####............]  25.0% 510/2040 el 0m00s eta 0m00s                                                                            [     0.2s]         anneal stage 3/3 (digit level 2): r=0.732076 active=24
+selftest anneal+refine [######..........]  37.5% 765/2040 el 0m00s eta 0m00s                                                                            T5 kuramoto tick, initial spread +-2.98 rad: <r>=0.999646 locked=24/24 converged=true ticks=1785
+T6 BNZ4 chunk: 189 B round-trip=true corrupted->bnz4: crc mismatch duplicate-perm->bnz4: permutation not invertible
+T7 BNZ4 prolongation weights vs sampleGrid: max err=1.6e-08 (float32 weights)
+T8 MRH keys rows=[204 3072] coords=[0.25 0.75] bucket=12
+== dtft_lock selftests ==
+E1 sub-bin: true 7.3 -> Candan 7.300022 (paper sanity 7.30002); Hann PSR=407.4 uniq=65.42 pass=true; chirp-z zoom 7.31250 bins; Goertzel phase at 7.3/64 = 2.9575 rad (rect)
+group delay: shift 5 samples -> 3.1767 (rect window)
+L2 pair tick dw=1/256: phase-only lag=0.0312 locked=true | with g_omega update lag=0.0000 locked=true | analytic (L2) true
+L2 pair tick dw=1/128: phase-only lag=0.0625 locked=true | with g_omega update lag=0.0000 locked=true | analytic (L2) true
+L2 pair tick dw=1/100: phase-only lag=0.0800 locked=false | with g_omega update lag=0.0000 locked=true | analytic (L2) false
+L2 pair tick dw=1/64: phase-only lag=0.1250 locked=false | with g_omega update lag=0.0000 locked=true | analytic (L2) false
+beta1 C5xC3: squares 2 (paper 2), no squares 16 (paper 16)
+beta1 [5 3 2 2] (60): squares 2 (D>=3 = 2); [3 2 2 5]? n/a; [5 2] x [3] (30): squares 2 (D>=3=2)
+persistence [5 3 3]: born=91 killed=88 essential=3 (beta1=3)
+P6 generalized eigenproblem vs DFT (C5xC3, stars 0.7/1.9): max|omega_dense-omega_DFT|=3.11e-15, zero modes=2 (beta1 2)
+H2 band edge [5 2 2 2 2 2 2 2 2 2]: lambda_gap=1.3820 defined=true
+H2 band edge [3 3 3 2 2 2 2 2 2 2 2]: lambda_gap=3.0000 defined=true
+H2 band edge [2 2 2 2 2 2]: lambda_gap=+Inf defined=false
+BNZ4 v2 chunk round-trip: true (184 B)
