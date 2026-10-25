@@ -1,0 +1,18 @@
+base:
+  model: C:\Users\grego\models\dev\hodge-vaultgemma-1\hodge-vaultgemma-1.bnz.ternary.safetensors
+  tokenizer: C:\Users\grego\EncryptidSystems\stage-ai\models\hodge-1\tokenizer.json
+  tokenizer_config: C:\Users\grego\EncryptidSystems\stage-ai\models\hodge-1\tokenizer_config.json
+  config: C:\Users\grego\EncryptidSystems\stage-ai\models\hodge-1\config.json
+  special_tokens_map: C:\Users\grego\models\dev\hodge-vaultgemma-1\special_tokens_map.json
+  generation_config: C:\Users\grego\EncryptidSystems\stage-ai\models\hodge-1\generation_config.json
+sources:
+  - model: C:\Users\grego\Downloads\model.safetensors
+    weight: 1
+    tokenizer: C:\Users\grego\Downloads\tokenizer (2).json
+    tokenizer_config: C:\Users\grego\Downloads\tokenizer_config (3).json
+    config: C:\Users\grego\Downloads\config (4).json
+    generation_config: C:\Users\grego\Downloads\generation_config (3).json
+out: C:\Users\grego\models\dev\hodge-4\hodge-4.bnz
+settings:
+  limbs: 2
+  src-rope-theta: 500000

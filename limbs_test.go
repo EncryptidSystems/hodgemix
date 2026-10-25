@@ -30,6 +30,78 @@ func TestLlama3NeckBudget(t *testing.T) {
 	}
 }
 
+func TestAnnealStopsWhenRStalls(t *testing.T) {
+	ticks, _ := runAnnealStage(NLost, RefineTol, 1, func(float64) {
+		t.Fatal("a synced stage ticked")
+	}, func() float64 { return 1 })
+	if ticks != 0 {
+		t.Fatalf("synced stage used %d ticks", ticks)
+	}
+	calls := 0
+	r := 0.0
+	ticks, got := runAnnealStage(NLost, RefineTol, 0.2, func(float64) { calls++ }, func() float64 {
+		if calls < 5 {
+			r += 0.1
+		}
+		return r
+	})
+	if ticks >= NLost || calls >= NLost {
+		t.Fatalf("spent the budget: ticks %d calls %d r %.3f", ticks, calls, got)
+	}
+	if ticks < 5 {
+		t.Fatalf("stopped before r rose: %d", ticks)
+	}
+	flat := 0
+	ticks, _ = runAnnealStage(NLost, RefineTol, 0.4, func(float64) { flat++ }, func() float64 { return 0.4 })
+	if flat != annealStall {
+		t.Fatalf("a flat stage used %d ticks", flat)
+	}
+	climb := 0
+	r = 0.2
+	ticks, _ = runAnnealStage(NLost, RefineTol, 0.2, func(float64) { climb++ }, func() float64 {
+		r += 1e-4
+		return r
+	})
+	if climb != annealStall {
+		t.Fatalf("a creep slower than rtol used %d ticks", climb)
+	}
+}
+
+func TestWideNeckNotCoded(t *testing.T) {
+	rng := rand.New(rand.NewSource(7))
+	R, C := 32, 40
+	W := make([]float32, R*C)
+	for i := range W {
+		W[i] = float32(rng.NormFloat64())
+	}
+	am := absmean(W)
+	for i := 0; i < len(W)/2; i++ {
+		W[i] = float32(50 * am)
+	}
+	q0, s0 := ternarize(W)
+	limbs, _ := residualLimbs(W, q0, s0, 1, 0.15, R, C)
+	if len(limbs) != 0 {
+		t.Fatalf("a neck covering half the tensor was written: %d limbs", len(limbs))
+	}
+}
+
+// A limb the residual barely notices is not written. The loader accumulates every limb.
+func TestLimbDustStops(t *testing.T) {
+	rng := rand.New(rand.NewSource(3))
+	R, C := 16, 20
+	W := make([]float32, R*C)
+	for i := range W {
+		W[i] = float32(rng.NormFloat64())
+	}
+	q0, s0 := ternarize(W)
+	_, rel := residualLimbs(W, q0, s0, 8, 0, R, C)
+	for i := 1; i < len(rel); i++ {
+		if rel[i-1]-rel[i] < RefineTol {
+			t.Fatalf("kept a limb that moved the residual by %.3g: %v", rel[i-1]-rel[i], rel)
+		}
+	}
+}
+
 // Each limb lowers the residual; limbs written to a file read back, and LoadDense is their sum.
 func TestLimbs(t *testing.T) {
 	for _, n := range []string{"a.weight_limb1", "a.weight_limb12_scale", "a.weight_limb3_radix"} {

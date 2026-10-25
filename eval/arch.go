@@ -48,7 +48,7 @@ func Classify(cfg map[string]any, layers int) (Arch, error) {
 	mt, _ := cfg["model_type"].(string)
 	a := Arch{ModelType: mt, Norm: "rms"}
 	switch mt {
-	case "bitnet":
+	case "bitnet", "hodge":
 		a.Family = Fam2B4T
 	case "", "llama":
 		a.Family = FamLlama

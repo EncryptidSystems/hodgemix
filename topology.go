@@ -82,9 +82,107 @@ func vecAxis(name string) (axisKind, bool) {
 
 type modelMeta struct {
 	D, F, Heads, KV, HD, Layers int
+	FBy                         []int   `json:",omitempty"` // per-layer intermediate when it is not F (Gemma 4 double-wide MLP)
+	KVBy                        []int   `json:",omitempty"` // per-layer KV*head_dim when a layer's head is wider (Gemma 4 full attention)
+	QBy                         []int   `json:",omitempty"` // per-layer Heads*head_dim, same layers
 	Theta                       float64 // rope_theta; 0 = unknown
 	QKNorm                      bool    // per-head q_norm / k_norm (Qwen3)
 	Config                      string  `json:",omitempty"` // the config set for the model, when it agreed with the tensors
+}
+
+// noteF records one layer's intermediate size. gate and up win over down.
+func (m *modelMeta) noteF(layer, f int, prefer bool) {
+	if layer < 0 || f <= 0 {
+		return
+	}
+	if layer >= len(m.FBy) {
+		n := make([]int, layer+1)
+		copy(n, m.FBy)
+		m.FBy = n
+	}
+	if m.FBy[layer] == 0 || prefer {
+		m.FBy[layer] = f
+	}
+}
+
+// fAt is the intermediate size of one layer. A model whose every layer matches F has no FBy.
+func (m modelMeta) fAt(layer int) int {
+	if layer >= 0 && layer < len(m.FBy) && m.FBy[layer] > 0 {
+		return m.FBy[layer]
+	}
+	return m.F
+}
+
+// finishF drops FBy when every recorded layer has the model's F.
+func (m *modelMeta) finishF() {
+	for _, f := range m.FBy {
+		if f > 0 && f != m.F {
+			return
+		}
+	}
+	m.FBy = nil
+}
+
+func (m *modelMeta) noteAxis(dst *[]int, layer, n int) {
+	if layer < 0 || n <= 0 {
+		return
+	}
+	if layer >= len(*dst) {
+		grown := make([]int, layer+1)
+		copy(grown, *dst)
+		*dst = grown
+	}
+	if (*dst)[layer] == 0 {
+		(*dst)[layer] = n
+	}
+}
+
+// kvLen is one layer's k/v rows. qLen is its q rows and its o columns.
+func (m modelMeta) kvLen(layer int) int {
+	if layer >= 0 && layer < len(m.KVBy) && m.KVBy[layer] > 0 {
+		return m.KVBy[layer]
+	}
+	return m.KV * m.HD
+}
+
+func (m modelMeta) qLen(layer int) int {
+	if layer >= 0 && layer < len(m.QBy) && m.QBy[layer] > 0 {
+		return m.QBy[layer]
+	}
+	return m.Heads * m.HD
+}
+
+// hdAt is the head dim of one layer, from its k/v rows when those differ from HD.
+func (m modelMeta) hdAt(layer int) int {
+	n := m.kvLen(layer)
+	if m.KV > 0 && n > 0 && n%m.KV == 0 {
+		return n / m.KV
+	}
+	if m.HD > 0 {
+		return m.HD
+	}
+	return 1
+}
+
+// finishAxes drops the per-layer tables when every layer matches the model.
+func (m *modelMeta) finishAxes() {
+	m.finishF()
+	same := true
+	for _, n := range m.KVBy {
+		if n > 0 && n != m.KV*m.HD {
+			same = false
+			break
+		}
+	}
+	for _, n := range m.QBy {
+		if n > 0 && n != m.Heads*m.HD {
+			same = false
+			break
+		}
+	}
+	if same {
+		m.KVBy, m.QBy = nil, nil
+	}
 }
 
 func (m modelMeta) G() int { return m.Heads / max(1, m.KV) }
@@ -140,7 +238,13 @@ func metaOf(st *ST) (modelMeta, error) {
 	// Each size from the first layer that has the tensor: a shard of a checkpoint may start mid-stack,
 	// even mid-layer.
 	first := map[string]int{}
+	lm := languageModel(st)
 	for _, k := range st.Keys {
+		// The text stack is the language model when the file has one. An audio
+		// or vision q_proj is a different hidden size, not a second config.
+		if asideTensor(k) || (lm && !strings.Contains(k, "model.language_model.")) {
+			continue
+		}
 		sh := st.LogicalShape(k)
 		l := layerOf(k)
 		if l+1 > m.Layers {
@@ -150,6 +254,22 @@ func metaOf(st *ST) (modelMeta, error) {
 			continue
 		}
 		r := roleOf(k)
+		// Limbs are stored at the packed row count, and bnzmix blobs are not the
+		// weight. Only the weight itself says how wide that layer's FFN is.
+		if len(sh) == 2 && strings.HasSuffix(k, ".weight") && !strings.HasPrefix(k, "bnzmix.") && !isLimbTensor(k) {
+			switch r {
+			case "gate", "up":
+				m.noteF(l, sh[0], true)
+			case "down":
+				m.noteF(l, sh[1], false)
+			case "k", "v":
+				m.noteAxis(&m.KVBy, l, sh[0])
+			case "q":
+				m.noteAxis(&m.QBy, l, sh[0])
+			case "o":
+				m.noteAxis(&m.QBy, l, sh[1])
+			}
+		}
 		if len(sh) == 1 && (strings.Contains(k, "q_norm") || strings.Contains(k, "k_norm")) {
 			r = "qknorm"
 		} else if len(sh) != 2 || (r != "q" && r != "k" && r != "gate") {
@@ -234,6 +354,7 @@ func metaOf(st *ST) (modelMeta, error) {
 	if m.Heads%m.KV != 0 {
 		return m, fmt.Errorf("%s: %d query heads do not group over %d kv heads", st.Path, m.Heads, m.KV)
 	}
+	m.finishAxes()
 	return m, nil
 }
 
@@ -336,19 +457,27 @@ func newTopology(policy string, sts []*ST, E []*entry, w []float64) (*topology, 
 			}
 			in := axisInst{e.src, kind, l}
 			units := mm.size(kind)
+			full := units
+			hd := mm.hdAt(l)
 			unitOf := func(c int) int { return c }
 			switch kind {
 			case axD:
 				in.layer = -1
+			case axF:
+				full = mm.fAt(l)
+				units = full
 			case axKV:
 				units = mm.KV
-				unitOf = func(c int) int { return c / mm.HD }
+				full = mm.kvLen(l)
+				unitOf = func(c int) int { return c / hd }
 			case axQ: // query head h belongs to kv group h / G
 				in.kind = axKV
 				units = mm.KV
-				unitOf = func(c int) int { return c / mm.HD / mm.G() }
+				full = mm.qLen(l)
+				ghd := mm.G() * hd
+				unitOf = func(c int) int { return c / ghd }
 			}
-			if len(keys) != mm.size(kind) {
+			if len(keys) != full {
 				continue // not the shape the topology reads (fused or unusual tensor)
 			}
 			add(in, units, keys, unitOf)
@@ -439,7 +568,7 @@ func (tp *topology) spansFor(unitKind axisKind, t int) (*unitSpans, error) {
 		for i := range w {
 			w[i] = 1
 			if unitKind == axKV {
-				w[i] = tp.metas[c.m].HD
+				w[i] = tp.metas[c.m].hdAt(c.layer)
 			}
 		}
 		keys, widths, ins = append(keys, k), append(widths, w), append(ins, in)
@@ -478,15 +607,24 @@ func (tp *topology) marriageFor(kind axisKind, t int) (*marriage, error) {
 	mg := &marriage{coords: map[axisInst][]float64{}, radix: sp.radix}
 	for j, in := range ins {
 		mm := tp.metas[in.m]
+		hd := mm.hdAt(in.layer)
 		n := mm.size(kind)
+		switch kind {
+		case axF:
+			n = mm.fAt(in.layer)
+		case axKV:
+			n = mm.kvLen(in.layer)
+		case axQ:
+			n = mm.qLen(in.layer)
+		}
 		x := make([]float64, n)
 		for c := range x {
 			u, off, per := c, 0, 1
 			switch kind {
 			case axKV:
-				u, off, per = c/mm.HD, c%mm.HD, mm.HD
+				u, off, per = c/hd, c%hd, hd
 			case axQ:
-				per = mm.G() * mm.HD
+				per = mm.G() * hd
 				u, off = c/per, c%per
 			}
 			x[c] = lo[j][u] + (float64(off)+.5)/float64(per)*(hi[j][u]-lo[j][u])
@@ -663,7 +801,7 @@ func (tp *topology) resized(base *ST, src, name string, layer int) target {
 // configDefaults is what the config class means by a key the base's config leaves out (BitNetConfig
 // for bitnet, LlamaConfig otherwise). The output keeps the source model_type. These fill holes only.
 func configDefaults(modelType string) map[string]any {
-	if modelType == "bitnet" {
+	if ternaryFamily(modelType) {
 		return map[string]any{"hidden_act": "relu2", "rope_theta": 500000.0, "rms_norm_eps": 1e-5}
 	}
 	return map[string]any{"hidden_act": "silu", "rope_theta": 10000.0, "rms_norm_eps": 1e-6}

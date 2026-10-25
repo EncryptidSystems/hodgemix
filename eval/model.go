@@ -347,7 +347,7 @@ func load(path string) (*model, error) {
 	}
 	// Unset keys take the config class's defaults (BitNetConfig for bitnet, LlamaConfig otherwise).
 	m.Act, m.Theta, m.Eps = "silu", 10000, 1e-6
-	if cfg["model_type"] == "bitnet" {
+	if cfg["model_type"] == "bitnet" || cfg["model_type"] == "hodge" {
 		m.Act, m.Theta, m.Eps = "relu2", 500000, 1e-5
 	}
 	if v, ok := cfg["hidden_act"].(string); ok {
@@ -404,6 +404,9 @@ func load(path string) (*model, error) {
 	wg.Wait()
 	if first != nil {
 		return nil, first
+	}
+	if err := m.loadTowers(s); err != nil {
+		return nil, err
 	}
 	return m, nil
 }

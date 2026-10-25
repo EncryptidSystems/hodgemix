@@ -113,12 +113,10 @@ func kuramotoTick(theta []float64, K []float64, level []int, refOf []int, p KPar
 					act[i] = 1
 				}
 			}
-			for q := 0; q < p.NLost; q++ {
-				tick(float64(q+1) / float64(p.NLost))
-				t++
-				innerSet(float64(t), 0)
-			}
-			logf("        anneal stage %d/%d (digit level %d): r=%.6f active=%d", s+1, nst, s, rOf(), countAct(act))
+			ticks, r := runAnnealStage(p.NLost, p.RTol, rOf(), func(scale float64) { tick(scale) }, rOf)
+			t += ticks
+			innerSet(float64(t), 0)
+			logf("        anneal stage %d/%d (digit level %d): r=%.6f active=%d ticks=%d/%d", s+1, nst, s, r, countAct(act), ticks, p.NLost)
 		}
 	}
 	for i := range act {
@@ -172,6 +170,50 @@ func kuramotoTick(theta []float64, K []float64, level []int, refOf []int, p KPar
 	res.Theta, res.Steps = theta, t
 	endInner()
 	return res
+}
+
+// annealStall is how many ticks the best r may go without rising by rtol.
+// A smaller rise is the hodge-4 overfit: the stage kept integrating omega for
+// every one of the N_lost ticks and finished with r still short of the lock.
+const annealStall = 8
+
+// runAnnealStage is one digit level of the Eq.(18) ramp. A level that is already synced
+// does not tick. The ramp stops when r reaches the lock, when the best r goes eight ticks
+// without rising by rtol, or at half the budget if it is still short of the lock.
+// r is measured by measure after each tick.
+func runAnnealStage(n int, rtol, r0 float64, tick func(scale float64), measure func() float64) (ticks int, r float64) {
+	r = r0
+	if r0 >= 1-rtol {
+		return 0, r0
+	}
+	best := r0
+	mark := r0
+	still := 0
+	for t := 0; t < n; t++ {
+		tick(float64(t+1) / float64(n))
+		r = measure()
+		ticks = t + 1
+		if r > best {
+			best = r
+		}
+		if r >= 1-rtol {
+			return ticks, r
+		}
+		if best >= mark+rtol {
+			mark = best
+			still = 0
+		} else {
+			still++
+			if still >= annealStall {
+				return ticks, r
+			}
+		}
+		// Half coupling and still short of the lock: the rest of the ramp walks omega.
+		if ticks >= n/2 && best < 1-16*rtol {
+			return ticks, r
+		}
+	}
+	return ticks, r
 }
 
 // Paper: no equation (helper)

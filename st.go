@@ -121,6 +121,32 @@ func openST(path string) (*ST, error) {
 // Paper: no equation (helper: I/O, progress or utility)
 func (s *ST) Has(k string) bool { _, ok := s.H[k]; return ok }
 
+// Close releases the safetensors files this ST holds.
+func (s *ST) Close() error {
+	if s == nil {
+		return nil
+	}
+	var err error
+	if s.f != nil {
+		err = s.f.Close()
+		s.f = nil
+	}
+	seen := map[*ST]bool{}
+	for _, o := range s.owner {
+		if o == nil || o == s || seen[o] {
+			continue
+		}
+		seen[o] = true
+		if o.f != nil {
+			if e := o.f.Close(); err == nil {
+				err = e
+			}
+			o.f = nil
+		}
+	}
+	return err
+}
+
 // Paper: no equation (helper: I/O, progress or utility)
 func (s *ST) Raw(k string) ([]byte, error) {
 	if o := s.owner[k]; o != nil {

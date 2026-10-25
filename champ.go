@@ -11,7 +11,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 )
 
@@ -133,14 +132,19 @@ func champCheck(stPath, cfgPath string) (bad, notes []string) {
 		notes = append(notes, fmt.Sprintf("%d BitLinears have dynamic MRH limbs: model.go and bitnet-rt.js run every limb (bitlinear.wgsl CENTER, ACCUM), with no limb-count cap", limbed))
 	}
 	bad = append(bad, champChanMaps(st)...)
+	// Champ is a legacy consumer. The check that remains is the BitNet shape
+	// above. Audio, vision, and embedding tensors stay in the file.
+	extra := 0
 	for n := range st.H {
-		if _, ok := want[n]; !ok && !strings.HasPrefix(n, "bnzmix.") && !isLimbTensor(n) {
-			if n == "lm_head.weight" {
-				bad = append(bad, "lm_head.weight present: the loader ignores it and the runtime uses the tied embedding")
-			} else if regexp.MustCompile(`^model\.`).MatchString(n) {
-				bad = append(bad, n+": not a tensor bitnet-rt.js loads (ignored)")
-			}
+		if _, ok := want[n]; ok || strings.HasPrefix(n, "bnzmix.") || isLimbTensor(n) {
+			continue
 		}
+		if strings.HasPrefix(n, "model.") || strings.HasPrefix(n, "lm_head.") {
+			extra++
+		}
+	}
+	if extra > 0 {
+		notes = append(notes, fmt.Sprintf("%d tensors besides the BitNet shape are in the file (audio, vision, embeddings)", extra))
 	}
 	return bad, notes
 }
@@ -189,8 +193,8 @@ func champRuntime(cfg map[string]any, D, F, H, KV, hd int) []string {
 	// A quantization_config the source already has must be the packed ternary marker.
 	// Inventing one is not what makes the file packed; the weights are.
 	if q, ok := cfg["quantization_config"].(map[string]any); ok && q != nil {
-		if str(q, "quant_method") != "bitnet" || str(q, "linear_class") != "autobitlinear" || str(q, "quantization_mode") != "offline" {
-			bad = append(bad, "config.json: quantization_config must be bitnet / autobitlinear / offline (packed weights)")
+		if str(q, "quant_method") != hodgeQuant || str(q, "linear_class") != hodgeLinear || str(q, "quantization_mode") != "offline" {
+			bad = append(bad, "config.json: quantization_config must be "+hodgeQuant+" / "+hodgeLinear+" / offline (packed weights)")
 		}
 	}
 	if _, ok := cfg["max_position_embeddings"].(float64); !ok {

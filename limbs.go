@@ -236,6 +236,19 @@ func residualLimbs(W []float32, q0 []int8, s0 float64, max int, tol float64, R, 
 		}
 	}
 	rel = append(rel, norm(gap))
+	// part is the residual of the neck (onNeck) or of the body, as a fraction of ||W||.
+	// The two are fit separately, so a spike must not decide whether a body limb moved.
+	part := func(g []float32, onNeck bool) float64 {
+		var s float64
+		for i, v := range g {
+			neck := sing != nil && sing[i]
+			if neck != onNeck {
+				continue
+			}
+			s += float64(v) * float64(v)
+		}
+		return math.Sqrt(s) / math.Max(wn, 1e-30)
+	}
 	lock := R > 0 && C > 0 && R*C == len(W)
 	for len(limbs)+1 < max && rel[len(rel)-1] > tol {
 		var bd []uint8
@@ -277,7 +290,9 @@ func residualLimbs(W []float32, q0 []int8, s0 float64, max int, tol float64, R, 
 			break
 		}
 		nr := norm(next)
-		if nr >= rel[len(rel)-1] {
+		// A drop below the BF16 refine tolerance is not a limb. hodge-4 kept tails of
+		// 1e-7 after the residual had already stopped, and the loader accumulates every limb.
+		if part(gap, false)-part(next, false) < RefineTol {
 			break
 		}
 		for i := range gap {
@@ -290,15 +305,42 @@ func residualLimbs(W []float32, q0 []int8, s0 float64, max int, tol float64, R, 
 		limbs = append(limbs, lb)
 		rel = append(rel, nr)
 	}
+	// A T1 neck is a spike tail. The hodge-4 mix residual marked about half of every
+	// weight, and the loader accumulated that limb at 0.25 of the base rms.
+	if neckWide(sing) {
+		sing = nil
+	}
 	for _, lb := range neckLimbs(gap, sing, NeckLimbs) {
 		c := (lb.r - 1) / 2
-		for i := range gap {
-			gap[i] -= float32(lb.s * float64(int(lb.d[i])-c))
+		next := append([]float32(nil), gap...)
+		for i := range next {
+			next[i] -= float32(lb.s * float64(int(lb.d[i])-c))
 		}
+		if part(gap, true)-part(next, true) < RefineTol {
+			break
+		}
+		gap = next
 		limbs = append(limbs, lb)
 		rel = append(rel, norm(gap))
 	}
 	return limbs, rel
+}
+
+// neckWide is a mask that is not a spike tail. One spike's ternarization shoulder
+// marks about an eighth of a small grid. The hodge-4 mix residual marked about half
+// of each tensor, and the loader accumulated that limb at a quarter of the base rms.
+// A fifth of the tensor sits between those two.
+func neckWide(sing []bool) bool {
+	if len(sing) == 0 {
+		return false
+	}
+	c := 0
+	for _, s := range sing {
+		if s {
+			c++
+		}
+	}
+	return c > len(sing)/5
 }
 
 // neckLimbs codes the singular neck of gap. Positions outside sing stay the center digit, so the

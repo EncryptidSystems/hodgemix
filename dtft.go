@@ -762,6 +762,10 @@ func synthD(ents []Entry, G [2]int, sp SynthParams) ([]float64, SynthRec) {
 		}
 	}
 	if A < 0 || len(bandA) == 0 || len(others) == 0 {
+		if len(others) > 0 && (A < 0 || len(bandA) == 0) {
+			out = append([]float64(nil), ref...)
+			logf("      [D] no band to lock: curl stays with the base")
+		}
 		logf("      [D] no band (no digit with r>=3 on grid %v, Prop.2b beta1=0) or no sources: band stays with base, no lock", G)
 		rec.R = []float64{1}
 		D.Secs = time.Since(t0).Seconds()
@@ -904,6 +908,20 @@ func synthD(ents []Entry, G [2]int, sp SynthParams) ([]float64, SynthRec) {
 	setInner("[D] KTE ticks", float64((nst+maxWin)*sp.K.NLost), "")
 	act := make([]float64, no)
 	tk := 0
+	rNow := func() float64 {
+		if nm == 0 || len(allm) == 0 {
+			return 1
+		}
+		var rs float64
+		for m := 0; m < nm; m++ {
+			var z complex128
+			for a := range allm {
+				z += cmplx.Exp(complex(0, 2*math.Pi*theta[a*nm+m]))
+			}
+			rs += cmplx.Abs(z) / float64(len(allm))
+		}
+		return rs / float64(nm)
+	}
 	for s := 0; s < nst; s++ {
 		for k := range act {
 			act[k] = 0
@@ -911,11 +929,12 @@ func synthD(ents []Entry, G [2]int, sp SynthParams) ([]float64, SynthRec) {
 				act[k] = 1
 			}
 		}
-		for t := 0; t < sp.K.NLost; t++ {
-			kteTick(theta, omega, Kth, gw, act, float64(t+1)/float64(sp.K.NLost), sp.D.OmegaUpdate)
-			tk++
-			innerSet(float64(tk), 0)
-		}
+		ticks, r := runAnnealStage(sp.K.NLost, sp.K.RTol, rNow(), func(scale float64) {
+			kteTick(theta, omega, Kth, gw, act, scale, sp.D.OmegaUpdate)
+		}, rNow)
+		tk += ticks
+		innerSet(float64(tk), 0)
+		logf("        anneal stage %d/%d (digit level %d): r=%.6f active=%d ticks=%d/%d", s+1, nst, s, r, countAct(act), ticks, sp.K.NLost)
 	}
 	for k := range act {
 		act[k] = 1
@@ -1024,6 +1043,12 @@ func synthD(ents []Entry, G [2]int, sp SynthParams) ([]float64, SynthRec) {
 			delta[m][s] = complex(rm, 0) * (num[s]/complex(den, 0) - seqs[bi][m][s])
 		}
 		D.Merged++
+	}
+	// An unlocked tensor keeps the base grid. Curl TIES of a source that did not lock is the
+	// blend hodge-4 shipped at ppl 1.5e5. Eq.(19) already leaves an unlocked band bin with the base.
+	if D.Merged == 0 {
+		out = append([]float64(nil), ref...)
+		logf("      [D] no mode locked: curl and band stay with the base")
 	}
 	// apply band deltas: inverse A-axis digit DFT of the (Hermitian-completed) band changes
 	if D.Merged > 0 {

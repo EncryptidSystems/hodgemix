@@ -78,6 +78,8 @@ type model struct {
 	flows     []map[string]*flowLin // per layer and role, when instrumented (flow.go)
 	rec       []FlowLayer           // the token being fed's currents, when recording
 	cells     Cells
+	vis, aud  *towerTab
+	slots     map[int]towerSlot
 }
 
 // act is one linear layer input: its float activations and, for the BitLinear readers, their
@@ -233,12 +235,16 @@ func (m *model) headNorm(x, w []float32) {
 }
 
 // rope applies rotary frequencies. scale is the YaRN magnitude (1 except yarn).
-func (m *model) rope(x []float32, pos int, freq []float64, scale float64) {
+// phase is the tower angle added on planes 56..63 (D22); text passes 0.
+func (m *model) rope(x []float32, pos int, freq []float64, scale, phase float64) {
 	hd := m.HD
 	sc := float32(scale)
 	for h := 0; h < len(x)/hd; h++ {
 		for d := 0; d < hd/2; d++ {
 			f := float64(pos) * freq[d]
+			if d >= 56 && d < 64 {
+				f += phase
+			}
 			c, s := float32(math.Cos(f))*sc, float32(math.Sin(f))*sc
 			a, b := x[h*hd+d], x[h*hd+d+hd/2]
 			x[h*hd+d], x[h*hd+d+hd/2] = a*c-b*s, a*s+b*c
@@ -283,6 +289,7 @@ func (m *model) logits(x []float32) []float32 {
 type seq struct {
 	kc, vc [][][]float32
 	tap    func(li int, stage string, v []float32) // Trace: the residual after each sublayer, the FFN hidden
+	phi    []float64                               // tower phase on RoPE planes 56..63; 0 for a text token
 }
 
 // step is one token through every layer and the LM head: the next-token logits.
@@ -296,8 +303,18 @@ func (m *model) feed(s *seq, tok, pos int) []float32 {
 		s.kc, s.vc = make([][][]float32, m.L), make([][][]float32, m.L)
 	}
 	x := make([]float32, D)
-	for j := 0; j < D; j++ {
-		x[j] = at(m.emb, m.embDT, tok*D+j)
+	if sl, ok := m.slots[tok]; ok {
+		copy(x, sl.x)
+		if pos >= len(s.phi) {
+			nphi := make([]float64, pos+1)
+			copy(nphi, s.phi)
+			s.phi = nphi
+		}
+		s.phi[pos] = sl.phi
+	} else {
+		for j := 0; j < D; j++ {
+			x[j] = at(m.emb, m.embDT, tok*D+j)
+		}
 	}
 	if m.arch.EmbedScale {
 		sc := float32(math.Sqrt(float64(D)))
@@ -337,8 +354,9 @@ func (m *model) feed(s *seq, tok, pos int) []float32 {
 		if win > 0 && m.localFreq != nil {
 			freq, scale = m.localFreq, 1
 		}
-		m.rope(qv, pos, freq, scale)
-		m.rope(kv, pos, freq, scale)
+		ph := s.phaseAt(pos)
+		m.rope(qv, pos, freq, scale, ph)
+		m.rope(kv, pos, freq, scale, ph)
 		s.kc[li] = append(s.kc[li], kv)
 		s.vc[li] = append(s.vc[li], vv)
 		ao := m.attend(li, qv, s, pos, win)

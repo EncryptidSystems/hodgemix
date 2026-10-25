@@ -59,6 +59,57 @@ func roleOf(n string) string {
 	return ""
 }
 
+// languageModel is true when the checkpoint nests its text stack under
+// model.language_model (Gemma 4). The vision tower and the audio tower sit
+// beside it; they are part of the file, and they are not the text model the
+// config's text_config describes.
+func languageModel(st *ST) bool {
+	for _, k := range st.Keys {
+		if strings.Contains(k, "model.language_model.") {
+			return true
+		}
+	}
+	return false
+}
+
+// towerTensor is an audio or vision weight. It is not a text-mix role.
+func towerTensor(name string) bool {
+	return strings.Contains(name, "audio_tower") || strings.Contains(name, "vision_tower") ||
+		strings.Contains(name, "embed_audio") || strings.Contains(name, "embed_vision")
+}
+
+// carriedTensor is copied into the output under its own name: the audio and
+// vision towers, their embedding projections, the per-layer input embeddings,
+// and a contributor's language-model token embedding. The text mix already
+// writes model.embed_tokens.weight, so that name is not copied again.
+func carriedTensor(name string) bool {
+	if strings.HasPrefix(name, "bnzmix.") || name == "model.embed_tokens.weight" || name == "lm_head.weight" {
+		return false
+	}
+	if towerTensor(name) {
+		return true
+	}
+	return strings.Contains(name, "embed_tokens") || strings.Contains(name, "per_layer_") ||
+		strings.HasSuffix(name, "layer_scalar") || strings.Contains(name, "post_per_layer_input_norm")
+}
+
+// asideTensor keeps a tensor out of the text BitLinear mix. copyTowers writes
+// the carried ones into the output. The L-A towers are bnzmix.vision_tower,
+// bnzmix.audio_tower, bnzmix.embed_vision and bnzmix.embed_audio.
+func asideTensor(name string) bool {
+	return carriedTensor(name)
+}
+
+// embedKey is the token embedding. Gemma 4 stores it on the language model.
+func embedKey(st *ST) string {
+	for _, k := range []string{"model.embed_tokens.weight", "model.language_model.embed_tokens.weight"} {
+		if st.Has(k) {
+			return k
+		}
+	}
+	return ""
+}
+
 // Paper: no equation (helper: I/O, progress or utility)
 func layerOf(n string) int {
 	m := layerRe.FindStringSubmatch(n)
@@ -666,7 +717,11 @@ func run(c runCfg, basePath string, srcArgs []string, out, outTern, outMerged st
 	var E []*entry
 	for si, st := range all {
 		var names []string
+		lm := languageModel(st)
 		for _, k := range st.Keys {
+			if asideTensor(k) || (lm && !strings.Contains(k, "model.language_model.")) {
+				continue
+			}
 			if !strings.HasSuffix(k, "weight_scale") && !isLimbTensor(k) { // a limbed weight is one entry (LoadDense sums its limbs)
 				names = append(names, k)
 			}
@@ -1212,6 +1267,45 @@ func run(c runCfg, basePath string, srcArgs []string, out, outTern, outMerged st
 		outerSet(float64(isyn))
 	}
 	endOuter()
+	carried, err := copyTowers(all, W, MW, nil)
+	if err != nil {
+		die("towers: %v", err)
+	}
+	if carried > 0 {
+		logf("TOWERS  carried %d audio/vision tensors into the output", carried)
+		report["towers_carried"] = carried
+	}
+	tw, err := writeTowers(W, baseST, basePath)
+	if err != nil {
+		die("towers: %v", err)
+	}
+	if tw != nil {
+		report["towers"] = tw
+	}
+	// Gemma 4 encoders: ternarised into the output, and the bridge from their 1536-wide
+	// axis onto D (assimtowers.go). Later sources win on a repeated name, as copyTowers.
+	encSeen := map[string]bool{}
+	for i := len(all) - 1; i >= 0; i-- {
+		st := all[i]
+		if st == baseST {
+			continue
+		}
+		enc, err := assimilateGemmaTowers(W, st, encSeen)
+		if err != nil {
+			die("encoders: %v", err)
+		}
+		if enc == nil {
+			continue
+		}
+		report["encoders"] = enc
+		if _, done := report["embed_bridge"]; !done && st.Has("model.language_model.embed_tokens.weight") {
+			br, err := writeBridge(W, baseST, eval.FilesOf(basePath).Tokenizer, st, "model.language_model.embed_tokens.weight", eval.FilesOf(st.Path).Tokenizer)
+			if err != nil {
+				die("bridge: %v", err)
+			}
+			report["embed_bridge"] = br
+		}
+	}
 	var ent []int32
 	for _, e := range E {
 		ent = append(ent, int32(e.src), int32(e.shape[0]), int32(e.shape[1]), int32(e.bucket))
@@ -1321,6 +1415,11 @@ func run(c runCfg, basePath string, srcArgs []string, out, outTern, outMerged st
 			die("repair: %v", err)
 		}
 		report["repair"] = rr
+	}
+	if ch, err := stampHodgeFile(champConfigPath(out)); err != nil {
+		die("config names: %v", err)
+	} else if len(ch) > 0 {
+		logf("  config.json: %s", strings.Join(ch, ", "))
 	}
 	bad, notes := champCheck(outTern, champConfigPath(out))
 	if len(bad) > 0 {

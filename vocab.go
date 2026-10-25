@@ -284,14 +284,15 @@ func buildUnion(base *ST, basePath string, srcs []*ST) (*vocabUnion, error) {
 	type newRow struct{ src, sid, uid int } // source, its token id, the union id
 	var rows []newRow
 	for si, st := range srcs {
-		if !st.Has("model.embed_tokens.weight") {
+		ek := embedKey(st)
+		if ek == "" {
 			continue // a shard without the embedding adds no tokens
 		}
 		stk, err := readTok(eval.FilesOf(st.Path).Tokenizer)
 		if err != nil {
 			return nil, fmt.Errorf("source %d (%s): %v", si+1, st.Path, err)
 		}
-		if n, rows := stk.ids(), st.LogicalShape("model.embed_tokens.weight")[0]; n > rows {
+		if n, rows := stk.ids(), st.LogicalShape(ek)[0]; n > rows {
 			return nil, fmt.Errorf("source %d (%s): its tokenizer has ids up to %d but it embeds %d rows: it is another model's tokenizer", si+1, st.Path, n-1, rows)
 		}
 		type kv struct {
@@ -355,8 +356,9 @@ func buildUnion(base *ST, basePath string, srcs []*ST) (*vocabUnion, error) {
 			continue
 		}
 		st := srcs[si]
-		Ds := st.LogicalShape("model.embed_tokens.weight")[1]
-		Es, err := st.F32("model.embed_tokens.weight")
+		ek := embedKey(st)
+		Ds := st.LogicalShape(ek)[1]
+		Es, err := st.F32(ek)
 		if err != nil {
 			return nil, err
 		}

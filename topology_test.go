@@ -255,6 +255,176 @@ func TestMarriedTopologySelfIsOnePermutation(t *testing.T) {
 	}
 }
 
+// Gemma 4's last layers use a double-wide MLP. Each layer keeps its own F, so a wide
+// down_proj still sits on the married F axis.
+func TestDoubleWideFFN(t *testing.T) {
+	dir := tempDir(t)
+	D, H, KV, HD := 8, 2, 1, 4
+	base := writeTiny(t, filepath.Join(dir, "base"), tinyModel{D: D, F: 12, H: H, KV: KV, HD: HD, L: 1, V: 260}, 1)
+	srcDir := filepath.Join(dir, "src")
+	if err := os.MkdirAll(srcDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(srcDir, "model.safetensors")
+	W, err := NewSTW(p, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	z := func(n int) []float32 { return make([]float32, n) }
+	put := func(name string, r, c int) { W.AddBF16(name, []int{r, c}, z(r*c)) }
+	for _, l := range []int{0, 1} {
+		pre := fmt.Sprintf("model.layers.%d.", l)
+		put(pre+"self_attn.q_proj.weight", H*HD, D)
+		put(pre+"self_attn.k_proj.weight", KV*HD, D)
+	}
+	put("model.layers.0.mlp.gate_proj.weight", 6, D)
+	put("model.layers.0.mlp.up_proj.weight_limb1", 3, D) // packed limb rows must not replace F
+	put("model.layers.1.mlp.gate_proj.weight", 12, D)
+	put("model.layers.1.mlp.down_proj.weight", D, 12)
+	if err := W.Close(nil); err != nil {
+		t.Fatal(err)
+	}
+	cfg := map[string]any{"model_type": "gemma4_text", "hidden_size": D, "intermediate_size": 6,
+		"num_attention_heads": H, "num_key_value_heads": KV, "head_dim": HD, "num_hidden_layers": 2}
+	b, _ := json.Marshal(cfg)
+	if err := os.WriteFile(filepath.Join(srcDir, "config.json"), b, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	setFile(p, func(f *eval.ModelFiles) { f.Config = filepath.Join(srcDir, "config.json") })
+	st, err := OpenST(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := metaOf(st)
+	if err != nil || m.F != 6 || m.fAt(0) != 6 || m.fAt(1) != 12 {
+		t.Fatalf("per-layer F %+v %v", m, err)
+	}
+	bs, err := OpenST(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bm, err := metaOf(bs); err != nil || bm.FBy != nil || bm.fAt(0) != 12 {
+		t.Fatalf("uniform model %+v %v", bm, err)
+	}
+	seq := func(n int) []int {
+		k := make([]int, n)
+		for i := range k {
+			k[i] = i%5 + 1
+		}
+		return k
+	}
+	ent := func(src int, name, role string, rows, cols int) *entry {
+		return &entry{src: src, name: name, role: role, shape: []int{rows, cols}, kr: seq(rows), kc: seq(cols), nl: 2}
+	}
+	E := []*entry{
+		ent(0, "model.layers.0.mlp.gate_proj.weight", "gate", 12, D),
+		ent(1, "model.layers.0.mlp.gate_proj.weight", "gate", 6, D),
+		ent(1, "model.layers.1.mlp.gate_proj.weight", "gate", 12, D),
+		ent(1, "model.layers.1.mlp.down_proj.weight", "down", D, 12),
+	}
+	tp, err := newTopology("base", []*ST{bs, st}, E, []float64{1, 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mg, err := tp.marriageFor(axF, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	narrow := mg.coords[instFor(1, axF, 0)]
+	wide := mg.coords[instFor(1, axF, 1)]
+	if len(narrow) != 6 || len(wide) != 12 {
+		t.Fatalf("married F coords: narrow %d, wide %d", len(narrow), len(wide))
+	}
+}
+
+// Gemma 4 full-attention layers use global_head_dim (512) and sliding layers use head_dim (256).
+// The wide k_proj still has to sit on that layer's KV axis.
+func TestFullAttentionHead(t *testing.T) {
+	dir := tempDir(t)
+	D, H, KV, HD := 8, 2, 1, 4
+	base := writeTiny(t, filepath.Join(dir, "base"), tinyModel{D: D, F: 8, H: H, KV: KV, HD: HD, L: 1, V: 260}, 1)
+	srcDir := filepath.Join(dir, "src")
+	if err := os.MkdirAll(srcDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(srcDir, "model.safetensors")
+	W, err := NewSTW(p, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	z := func(n int) []float32 { return make([]float32, n) }
+	put := func(name string, r, c int) { W.AddBF16(name, []int{r, c}, z(r*c)) }
+	put("model.layers.0.self_attn.q_proj.weight", H*HD, D)
+	put("model.layers.0.self_attn.k_proj.weight", KV*HD, D)
+	put("model.layers.0.mlp.gate_proj.weight", 8, D)
+	wide := HD * 2
+	put("model.layers.1.self_attn.q_proj.weight", H*wide, D)
+	put("model.layers.1.self_attn.k_proj.weight", KV*wide, D)
+	put("model.layers.1.self_attn.o_proj.weight", D, H*wide)
+	put("model.layers.1.mlp.gate_proj.weight", 8, D)
+	if err := W.Close(nil); err != nil {
+		t.Fatal(err)
+	}
+	cfg := map[string]any{"model_type": "gemma4_text", "hidden_size": D, "intermediate_size": 8,
+		"num_attention_heads": H, "num_key_value_heads": KV, "head_dim": HD, "num_hidden_layers": 2}
+	b, _ := json.Marshal(cfg)
+	if err := os.WriteFile(filepath.Join(srcDir, "config.json"), b, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	setFile(p, func(f *eval.ModelFiles) { f.Config = filepath.Join(srcDir, "config.json") })
+	st, err := OpenST(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := metaOf(st)
+	if err != nil || m.hdAt(0) != HD || m.hdAt(1) != wide || m.kvLen(1) != KV*wide || m.qLen(1) != H*wide {
+		t.Fatalf("per-layer head %+v %v", m, err)
+	}
+	bs, err := OpenST(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bm, err := metaOf(bs); err != nil || bm.KVBy != nil || bm.hdAt(0) != HD {
+		t.Fatalf("uniform head %+v %v", bm, err)
+	}
+	seq := func(n int) []int {
+		k := make([]int, n)
+		for i := range k {
+			k[i] = i%5 + 1
+		}
+		return k
+	}
+	ent := func(src int, name, role string, rows, cols int) *entry {
+		return &entry{src: src, name: name, role: role, shape: []int{rows, cols}, kr: seq(rows), kc: seq(cols), nl: 2}
+	}
+	E := []*entry{
+		ent(0, "model.layers.0.self_attn.k_proj.weight", "k", KV*HD, D),
+		ent(1, "model.layers.0.self_attn.k_proj.weight", "k", KV*HD, D),
+		ent(1, "model.layers.1.self_attn.k_proj.weight", "k", KV*wide, D),
+		ent(1, "model.layers.1.self_attn.q_proj.weight", "q", H*wide, D),
+	}
+	tp, err := newTopology("base", []*ST{bs, st}, E, []float64{1, 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mg, err := tp.marriageFor(axKV, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	narrow := mg.coords[instFor(1, axKV, 0)]
+	got := mg.coords[instFor(1, axKV, 1)]
+	if len(narrow) != KV*HD || len(got) != KV*wide {
+		t.Fatalf("married KV coords: narrow %d, wide %d", len(narrow), len(got))
+	}
+	mq, err := tp.marriageFor(axQ, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if q := mq.coords[instFor(1, axQ, 1)]; len(q) != H*wide {
+		t.Fatalf("married Q coords %d", len(q))
+	}
+}
+
 // tempDir is a scratch folder removed best-effort: run() keeps its input files open for the life of
 // the process, which Windows will not delete under t.TempDir's strict cleanup.
 func tempDir(t *testing.T) string {

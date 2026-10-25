@@ -25,10 +25,11 @@ func tokCheck(what, tok, cfg string, st *ST, needCfg bool) []string {
 	if err != nil {
 		return []string{fmt.Sprintf("%s: %v", what, err)}
 	}
-	if !st.Has("model.embed_tokens.weight") {
+	emb := embedKey(st)
+	if emb == "" {
 		return []string{what + ": has no model.embed_tokens.weight"}
 	}
-	if n, rows := t.ids(), st.LogicalShape("model.embed_tokens.weight")[0]; n > rows {
+	if n, rows := t.ids(), st.LogicalShape(emb)[0]; n > rows {
 		bad = append(bad, fmt.Sprintf("%s: %s has ids up to %d but the model embeds %d rows: it is another model's tokenizer", what, tok, n-1, rows))
 	}
 	if cfg == "" {
@@ -105,7 +106,7 @@ func preflightCheck(c runCfg, basePath string, all []*ST, baseOnly bool) ([]mode
 	}
 	if VocabMode == "union" && baseOnly {
 		for i, st := range all[1:] {
-			if st.Has("model.embed_tokens.weight") { // a shard without the embedding adds no tokens
+			if embedKey(st) != "" { // a shard without the embedding adds no tokens
 				f := eval.FilesOf(st.Path)
 				bad = append(bad, tokCheck(name(i+1), f.Tokenizer, f.TokenizerConfig, st, false)...)
 			}
@@ -131,6 +132,9 @@ func preflightCheck(c runCfg, basePath string, all []*ST, baseOnly bool) ([]mode
 	for i, st := range all {
 		drop := map[string][]string{}
 		for _, k := range st.Keys {
+			if asideTensor(k) {
+				continue
+			}
 			sh := st.LogicalShape(k)
 			r := roleOf(k)
 			why := ""

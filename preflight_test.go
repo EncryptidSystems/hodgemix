@@ -57,6 +57,69 @@ func hasReason(bad []string, s string) bool {
 	return false
 }
 
+// A Gemma 4 file is the language model plus a vision tower and an audio tower.
+// The text_config describes the language model. The other towers are not a
+// second, conflicting config, and they are not a reason to reject the file.
+func TestMultimodalSourceAccepted(t *testing.T) {
+	dir := tempDir(t)
+	base := writeTiny(t, filepath.Join(dir, "base"), tinyModel{D: 16, F: 24, H: 4, KV: 1, HD: 4, L: 1, V: 300}, 1)
+	srcDir := filepath.Join(dir, "gemma")
+	if err := os.MkdirAll(srcDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(srcDir, "model.safetensors")
+	W, err := NewSTW(p, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	z := func(n int) []float32 { return make([]float32, n) }
+	// Audio tower, layer 3, a different hidden size than the text config.
+	W.AddBF16("model.audio_tower.layers.3.self_attn.q_proj.linear.weight", []int{8, 8}, z(64))
+	W.AddBF16("model.audio_tower.layers.3.self_attn.k_proj.linear.weight", []int{8, 8}, z(64))
+	W.AddBF16("model.audio_tower.layers.3.feed_forward1.ffw_layer_1.linear.weight", []int{8, 8}, z(64))
+	W.AddBF16("model.audio_tower.output_proj.bias", []int{8}, z(8))
+	W.AddBF16("model.embed_vision.embedding_projection.weight", []int{4, 4}, z(16))
+	D, F, H, KV, HD := 16, 24, 4, 1, 4
+	pre := "model.language_model.layers.0."
+	W.AddBF16(pre+"self_attn.q_proj.weight", []int{H * HD, D}, z(H*HD*D))
+	W.AddBF16(pre+"self_attn.k_proj.weight", []int{KV * HD, D}, z(KV*HD*D))
+	W.AddBF16(pre+"mlp.gate_proj.weight", []int{F, D}, z(F*D))
+	W.AddBF16(pre+"per_layer_projection.weight", []int{D, 4}, z(D*4))
+	W.AddBF16("model.language_model.embed_tokens.weight", []int{300, D}, z(300*D))
+	if err := W.Close(nil); err != nil {
+		t.Fatal(err)
+	}
+	cfg := map[string]any{
+		"model_type": "gemma4",
+		"audio_config": map[string]any{"model_type": "gemma4_audio", "hidden_size": 8},
+		"text_config": map[string]any{
+			"model_type": "gemma4_text", "hidden_size": D, "intermediate_size": F,
+			"num_attention_heads": H, "num_key_value_heads": KV, "head_dim": HD, "num_hidden_layers": 1,
+		},
+	}
+	b, _ := json.Marshal(cfg)
+	if err := os.WriteFile(filepath.Join(srcDir, "config.json"), b, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	setFile(p, func(f *eval.ModelFiles) { f.Config = filepath.Join(srcDir, "config.json") })
+	writeTok(t, srcDir, 0, 0)
+	st, err := OpenST(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := metaOf(st)
+	if err != nil || m.D != D || m.F != F || m.Heads != H || m.KV != KV || m.HD != HD || m.Layers != 1 {
+		t.Fatalf("language-model topology %+v %v", m, err)
+	}
+	bs, err := OpenST(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, bad := preflightCheck(tinyCfg("base"), base, []*ST{bs, st}, true); len(bad) > 0 {
+		t.Fatalf("multimodal source refused: %v", bad)
+	}
+}
+
 // Every way a run would fail or make a broken model is found before anything is written.
 func TestPreflightRefuses(t *testing.T) {
 	dir := tempDir(t)
