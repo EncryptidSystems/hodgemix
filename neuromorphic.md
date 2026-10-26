@@ -1,6 +1,6 @@
 # Neuromorphic hodgemix: design spec and plan
 
-Encryptid Systems. 2026-10-25. Design only: no code was changed, nothing below was measured on this tree, and the plan is not approved.
+Encryptid Systems. 2026-10-25. The graded WebGPU kernel is in the tree (see Built, below). The rest of this note is the design: it was not measured on a checkpoint, and phases P2–P8 are not approved.
 
 ## 0. The rule this spec follows
 
@@ -11,6 +11,10 @@ Math instead of brute force. Every step below is one of:
 - **a derived constant:** taken from a quantity the model already fixes, such as the int8 step, the KTE gains, or BF16 resolution (DECISIONS.md #10).
 
 Nothing here trains a network, fits a surrogate gradient, tunes a firing threshold, or sweeps a parameter. The published spiking-LLM work does those things. It is listed in §2 only as a contrast. No new CLI flag is proposed. Where a choice seems to need one, it is listed as an open question in §7.
+
+## Built
+
+`eval/neuro.go` is the graded spike and the non-adjacent form of an int8 code. Both equal the integer accumulator in `applyIn`, so the scaled output matches today's forward bit for bit. `kernels/neuro.wgsl` compacts the nonzero codes into an event list and accumulates on WebGPU. The packing, the centre, the scale, and `ACCUM` are the ones `bitlinear.wgsl` already uses. Champ's `linOp` still dispatches `bitlinear.wgsl`. This kernel is the event path.
 
 ## 1. What is already neuromorphic
 

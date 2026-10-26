@@ -2,3 +2,7 @@
 *.exe
 *.exe.prev
 *.test
+
+# Local snapshots and downloaded research bundles. Not part of the build.
+/backup/
+*.zip

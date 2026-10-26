@@ -92,9 +92,15 @@ func (s *Session) NewDialog(system string) *Dialog {
 	return c
 }
 
+// feed runs ids through the layers. Only the last one goes through the LM head: the logits of the
+// others are never read.
 func (c *Dialog) feed(ids []int) {
-	for _, id := range ids {
-		c.lg = c.s.m.step(c.q, id, c.pos)
+	for i, id := range ids {
+		if i == len(ids)-1 {
+			c.lg = c.s.m.step(c.q, id, c.pos)
+		} else {
+			c.s.m.feed(c.q, id, c.pos)
+		}
 		c.Fed = append(c.Fed, id)
 		c.pos++
 	}
@@ -106,6 +112,43 @@ func (c *Dialog) Pos() int { return c.pos }
 // User feeds a user turn and the assistant's prompt.
 func (c *Dialog) User(text string) {
 	c.feed(c.s.tk.chatPieces("User: " + text + c.s.tk.eot + "Assistant: "))
+}
+
+// Assistant feeds a reply the model did not sample (a worked example) and the turn end.
+func (c *Dialog) Assistant(text string) {
+	c.feed(c.s.tk.chatPieces(text + c.s.tk.eot))
+}
+
+// Fork is a copy of the dialog that shares its cache so far. What either one feeds next stays its own:
+// the cache slices are capped at their length, so an append copies instead of writing into the other.
+func (c *Dialog) Fork() *Dialog {
+	q := &seq{phi: append([]float64(nil), c.q.phi...)}
+	if c.q.kc != nil {
+		q.kc, q.vc = make([][][]float32, len(c.q.kc)), make([][][]float32, len(c.q.vc))
+		for li := range c.q.kc {
+			k, v := c.q.kc[li], c.q.vc[li]
+			q.kc[li], q.vc[li] = k[:len(k):len(k)], v[:len(v):len(v)]
+		}
+	}
+	return &Dialog{s: c.s, q: q, pos: c.pos, lg: c.lg, Fed: append([]int(nil), c.Fed...)}
+}
+
+// Score is the log-probability that the assistant replies text and then ends the turn, and the
+// number of tokens that covers. It runs on a fork, so the dialog itself is unchanged.
+func (c *Dialog) Score(text string) (float64, int) {
+	ids := c.s.tk.chatPieces(text)
+	if eot, ok := c.s.tk.special[c.s.tk.eot]; ok {
+		ids = append(ids, eot)
+	}
+	f := c.Fork()
+	lp := 0.0
+	for i, id := range ids {
+		lp += logsoft(f.lg, id)
+		if i < len(ids)-1 {
+			f.feed([]int{id})
+		}
+	}
+	return lp, len(ids)
 }
 
 // Sampling is the next-token rule: temperature, then nucleus (top-p). Temp 0 is the argmax.
