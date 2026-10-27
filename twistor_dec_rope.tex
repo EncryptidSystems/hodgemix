@@ -1,0 +1,373 @@
+\documentclass[10pt]{article}
+\usepackage[margin=0.95in]{geometry}
+\usepackage{amsmath,amssymb,amsthm,booktabs}
+\usepackage[T1]{fontenc}
+\usepackage{hyperref}
+\hypersetup{colorlinks,linkcolor=blue,citecolor=blue,urlcolor=blue}
+\newtheorem{thm}{Theorem}[section]
+\newtheorem{prop}[thm]{Proposition}
+\newtheorem{lemma}[thm]{Lemma}
+\newtheorem{cor}[thm]{Corollary}
+\newtheorem{conj}[thm]{Conjecture}
+\theoremstyle{definition}
+\newtheorem{defn}[thm]{Definition}
+\newtheorem{rem}[thm]{Remark}
+\newcommand{\R}{\mathbb R}\newcommand{\Z}{\mathbb Z}\newcommand{\C}{\mathbb C}
+\newcommand{\Tor}{\mathbb T}\newcommand{\PT}{\mathbb{PT}}\newcommand{\CP}{\mathbb{CP}}
+\newcommand{\cO}{\mathcal O}\newcommand{\cH}{\mathcal H}
+\newcommand{\code}[1]{\texttt{\detokenize{#1}}}
+\DeclareMathOperator{\wrap}{wrap}\DeclareMathOperator{\im}{im}\DeclareMathOperator{\dist}{dist}
+\title{Twistor Correspondences, DEC Cochains and Rotary Phase Connections:\\ Phase Turbulence on the Harmonic Layer of the Hodge--Kuramoto Lock}
+\author{Gregory Disney-Leugers\\ Encryptid Systems}
+\date{21 October 2026}
+\begin{document}\maketitle
+
+\begin{abstract}
+We study three structures and their interaction on the weight 3-manifold of hodgemix merging: Penrose's twistor correspondence, the cochain complexes of discrete exterior calculus (DEC), and rotary position embedding (RoPE) read as a $U(1)$ connection. On the twistor side we separate what transfers to cochains rigorously from what does not. The Penrose transform is a \v{C}ech $1$-cochain construction on a two-set cover, but its content lies entirely in the holomorphic coefficient sheaf $\cO(k)$: with constant coefficients the relevant region of twistor space has vanishing first cohomology, so no constant-coefficient cochain analogue can carry it. What transfers is the double-fibration skeleton (pull-back and fibre integration, which is a cochain map over closed fibres), the dependence of cohomology on a twisted coefficient system (a nontrivial rank-one local system on a cycle is acyclic), the minitwistor picture for 3-manifolds through the discrete projection-slice identity, the Klein correspondence over finite fields (including the field of three elements), and a discrete abelian Bogomolny equation whose source-free solutions on the flat 3-torus are exactly the flat connections, i.e.\ the three-axis RoPE frequency triples. On the RoPE side we prove that RoPE is a flat connection that is pure gauge on the position line; that its relative-position property is gauge covariance; that the full linear symmetry group of a RoPE query--key pair at the 2B4T frequencies is $(\C^\times)^{d_h/2}$ per key--value group, of which exactly $(\Z/4)^{d_h/2}$ preserves ternary codes under one per-tensor scale; that a twist lifts the zero eigenvalue of harmonic modes and so ends the intrinsic $\omega=0$ degeneracy of true harmonics; and that antisymmetric phase connections preserve the gradient structure of identical-frequency Kuramoto dynamics, while a symmetric (Sakaguchi) lag cannot be removed by any rotation. The central result is a harmonic-frame theorem: in the simplicial Kuramoto model the harmonic (cohomology) component of the phases drifts at the harmonic projection of the natural frequencies independently of every coupling strength, and a RoPE-type rotation with frequency vector in the harmonic space is an exact symmetry that freezes this drift while leaving the exact and coexact dynamics unchanged. We also show that a common rotating frame cannot change any lock decision, so calming that alters which modes lock requires a non-gauge twist. Each construction is mapped onto the Hodge/DTFT lock, the limb lock, the RoPE remap of the merge and the Champ runtime. Statements that are not proved are labelled as conjectures. Predictions and a protocol on tiny synthetic systems are given; the only computations reported are arithmetic sanity checks on objects with at most a few hundred elements.
+\end{abstract}
+
+\tableofcontents
+
+\section{Scope and reading of the question}\label{s:scope}
+The question addressed is how twistor space and cochains interact with DEC, and how RoPE can calm turbulence on the cohomology layer of oscillations. We read ``twistor space'' as Penrose's projective twistor space $\PT$ and its relatives, ``cochains'' as the cochain complexes of DEC, ``RoPE'' as rotary position embedding, the ``layer of oscillations'' as the harmonic (cohomology) component on which the Hodge--Kuramoto and DTFT locks of~\cite{pv2,dtft} operate, and ``turbulence'' as loss of phase coherence in those locks. Each of these readings is an interpretation, and alternatives are listed in \S\ref{s:open} (items O1--O4). Nothing in this paper changes existing papers or code; all proposals are stated as such.
+
+\section{Background}\label{s:bg}
+\subsection{Twistor theory}
+Projective twistor space is $\PT=\CP^3$ (or the open subset $\PT'=\CP^3\setminus\CP^1$ relevant to affine complexified Minkowski space $M_\C=\C^4$)~\cite{penrose67,adm17}. A point $x\in M_\C$ corresponds to the line $L_x\cong\CP^1\subset\PT$ cut out by the incidence relation $\omega^A=ix^{AA'}\pi_{A'}$; points of $\PT$ correspond to totally null $\alpha$-planes. Lines in $\CP^3$ are parametrized by the Klein quadric in $\CP^5$ (Pl\"ucker coordinates), which is complexified compactified Minkowski space. The correspondence is a double fibration $\PT\xleftarrow{\ \mu\ }F\xrightarrow{\ \nu\ }M_\C$ with $F$ the projective primed spin bundle.
+
+\paragraph{Penrose transform.} Penrose's contour-integral formula~\cite{penrose69} produces solutions of the zero-rest-mass equations from twistor functions. Its cohomological form, due to Eastwood, Penrose and Wells~\cite{epw}, is an isomorphism between $H^1$ of suitable regions of $\PT$ with coefficients in the sheaf $\cO(k)$ of holomorphic functions homogeneous of degree $k$ and massless fields of a helicity fixed by $k$; for $k=-2$ these are solutions of the wave equation that extend holomorphically to a tube domain~\cite{epw,adm17}. In the presentation of~\cite{adm17}, the twistor space is covered by two open sets $U_0=\{Z^2\neq0\}$, $U_1=\{Z^3\neq0\}$, a class is represented by a function holomorphic on $U_0\cap U_1$ modulo functions holomorphic on $U_0$ or on $U_1$, and the field at $x$ is the contour integral of the restriction to $L_x$. Standard references are~\cite{huggetttod,wardwells,bastoneastwood}.
+
+\paragraph{Ward correspondence.} Anti-self-dual Yang--Mills fields on (regions of) space-time correspond to holomorphic vector bundles on the corresponding twistor region that are trivial on every line $L_x$~\cite{ward77}; for $S^4$ this gives instantons from algebraic bundles on $\CP^3$~\cite{atiyahward,ahs}. In three dimensions the space of oriented lines of $\R^3$, the minitwistor space $T\CP^1$, plays the same role for the Bogomolny equation $F=\star D\Phi$ (Hitchin~\cite{hitchin82}); Jones and Tod~\cite{jonestod} extend minitwistor spaces to Einstein--Weyl 3-manifolds.
+
+\paragraph{Integral geometry.} The prototype of a Penrose-type transform is John's X-ray transform: the integrals of a function on $\R^3$ over all lines form a function on the 4-dimensional space of lines that satisfies an ultrahyperbolic equation~\cite{john38}; twistor theory interprets this as a Penrose transform~\cite{adm17,bastoneastwood}.
+
+\subsection{Discrete exterior calculus}
+DEC~\cite{hirani,dhlm} works with cochains $C^k(X)$ on a cell complex $X$, coboundaries $d_k:C^k\to C^{k+1}$ with $d_{k+1}d_k=0$, and diagonal Hodge stars $\star_k$ between primal and dual cochains. Whitney forms and the de~Rham map make the discrete complex a cochain-level approximation of de~Rham theory~\cite{whitney,dodziuk,afw}. With stars, the Hodge Laplacian is $L_k^\star=d_{k-1}\star_{k-1}^{-1}d_{k-1}^{\top}\star_k+\star_k^{-1}d_k^{\top}\star_{k+1}d_k$, and the discrete Hodge decomposition
+\begin{equation}\label{e:hodge}
+C^k=\im d_{k-1}\ \oplus\ \cH^k\ \oplus\ \im\star_k^{-1}d_k^{\top}\star_{k+1},\qquad \cH^k=\ker L_k^\star\cong H^k(X;\R)
+\end{equation}
+is orthogonal in the $\star_k$ inner product (Eckmann~\cite{eckmann}; graph and simplicial forms in~\cite{lim,schaub}). Coefficients may be twisted by a connection: replacing $(d_0f)_{ij}=f_j-f_i$ by $f_j-e^{iA_{ij}}f_i$ gives the discrete magnetic or connection Laplacian~\cite{shubin,kenyon,singerwu}.
+
+\subsection{Rotary position embedding}
+RoPE~\cite{rope} splits a head vector of dimension $d_h$ into $d_h/2$ planes and rotates plane $p$ at position $m$ by the angle $mf_p$, with $f_p=\theta^{-2p/d_h}$. For positions $m,n$, $\langle R_mq,R_nk\rangle=\langle q,R_{n-m}k\rangle$, so attention logits depend on positions only through $n-m$. Liu and Zhou~\cite{liuzhou} characterize valid $N$-dimensional RoPE as given by commuting skew generators spanning an abelian subalgebra of $\mathfrak{so}(d)$; standard axis-aligned RoPE is the maximal toral subalgebra. Barbero et al.~\cite{barbero} show empirically that high-frequency planes carry positional attention patterns and low-frequency planes semantic matching. Zhang et al.~\cite{zhangrot} use continuous rotation symmetries of query/key and value/output projections for model fusion. For the base, $\theta=5\cdot10^5$, $d_h=128$, $H=20$ query heads and $H_{kv}=5$ key--value heads~\cite{arch,bitnet2b4t}.
+
+\subsection{Phase oscillators, frustration and turbulence}
+The Kuramoto model $\dot\theta_i=\omega_i+\sum_jK_{ij}\sin(\theta_j-\theta_i)$~\cite{kuramoto75,kuramoto84,strogatz} synchronizes above a critical coupling; Ott and Antonsen~\cite{ott} reduce the infinite population to low dimension. Sakaguchi and Kuramoto~\cite{sakaguchi} add a phase lag, $\sin(\theta_j-\theta_i-\alpha)$. On a ring, twisted states $\theta_i=2\pi qi/N$ coexist with synchrony~\cite{wiley}. Finite populations with distributed frequencies show high-dimensional \emph{phase chaos} with about half of the Lyapunov spectrum positive~\cite{popovych}. In spatially extended media, phase reduction of the complex Ginzburg--Landau equation beyond the Benjamin--Feir--Newell threshold gives \emph{phase turbulence} governed by the Kuramoto--Sivashinsky (KS) equation~\cite{kuramototsuzuki,sivashinsky,kuramoto84,aransonkramer}. Phases supported on $k$-simplices give the simplicial Kuramoto model of Mill\'an, Torres and Bianconi~\cite{millan},
+\begin{equation}\label{e:simpK}
+\dot\psi=\omega-\sigma_-\,d_{k-1}\sin(d_{k-1}^{\top}\psi)-\sigma_+\,d_k^{\top}\sin(d_k\psi),\qquad \psi\in C^k(X),
+\end{equation}
+whose projections onto the lower and upper adjacent cells decouple; Arnaudon et al.~\cite{arnaudon} add weights in DEC form and Sakaguchi-type frustration and observe partial loss of synchronization aligned with the Hodge subspaces.
+
+\subsection{The hodgemix setting}
+The merge represents each weight tensor on a grid ordered by multi-radix heap keys~\cite{pv2}. The weight 3-manifold of a role is the product of three degree-1 Whitney splines over output channel, input channel and layer, with coordinates $(s,t,u)$~\cite{surg}; the mixed-radix DFT makes each axis periodic, so the computational domain is the flat 3-torus $\Tor^3$, and per axis the digit torus $T=\prod_jC_{r_j}$~\cite{dtft,mono}. On the square-filled digit torus, $\beta_1$ equals the number of digit levels with $r_j\ge3$, and the true harmonics are the zero-frequency DFT components; the oscillators of the DTFT lock live on the quasi-harmonic band below the spectral gap $\lambda_{\rm gap}=\min_{r_j\ge3}(2-2\cos\frac{2\pi}{r_j})$, with natural frequencies from $(K-\omega^2M)v=0$, $K=\star_1L_1^\star$, $M=\star_1$, measured by DTFT sub-bin estimators and linked by $\omega(\nu)=2c\sin(\pi\nu)$~\cite{dtft}. The code of 18 October 2026~\cite{arch} contains:
+\begin{itemize}\itemsep1pt
+\item the runtime RoPE (\code{kernels/rope.wgsl}): rotate-half pairing $(p,p+d_h/2)$, frequency $\theta^{-2p/d_h}$, optional linear or llama3 scaling, applied to $q$ and $k$ at the token position before the cache write;
+\item the merge-side RoPE remap (\code{attention.go: ropeRemap}): plane $p$ of the target takes the contributor's rows at $s=p\ln\theta_t/\ln\theta_c$, linearly interpolated between neighbouring planes, identically for both halves;
+\item two locks with no RoPE in them: the sinusoidal tick of \code{kuramoto.go} with $\omega_i=0$ (used by the limb lock \code{limbs.go: lockLimb}, with base and limb modes as oscillators and all-to-all coupling $1$ within a digit level and $2^{-4}$ across levels), and the KTE tick of \code{dtft.go} in turns with the lifted difference $\operatorname{lift}(x)=x-\operatorname{round}(x)$ and natural frequencies from (L1) of~\cite{dtft}.
+\end{itemize}
+Thus RoPE acts today on the token-position axis and, through the remap, on the plane index of the $q,k$ output axis; it does not act on the weight 3-manifold or inside any lock.
+
+\section{Twistor space and cochains: what carries over}\label{s:twistor}
+\subsection{The Penrose transform as a \v{C}ech cochain}
+The two-set cover $\{U_0,U_1\}$ has as nerve a single 1-simplex. The \v{C}ech complex of a sheaf $\mathcal S$ on this cover is $C^0=\mathcal S(U_0)\oplus\mathcal S(U_1)\to C^1=\mathcal S(U_0\cap U_1)$, $(f_0,f_1)\mapsto f_1-f_0$, a cochain complex on the nerve with coefficients that vary with the open set. With $\mathcal S=\cO(k)$ this computes the twistor cohomology used in the contour formula~\cite{adm17}. With constant coefficients, \v{C}ech cohomology of a good cover equals the simplicial cohomology of its nerve~\cite{botttu}, which is the setting of DEC.
+
+\begin{prop}[constant coefficients carry nothing]\label{p:const}
+$H^1(\PT';\R)=0$, where $\PT'=\CP^3\setminus L$ for a line $L$. Consequently, for every triangulation of $\PT'$, the DEC cochain complex with real coefficients has $\ker L_1^\star=0$, for any choice of positive diagonal stars.
+\end{prop}
+\begin{proof}
+Choose a line $L'$ disjoint from $L$. For $Z\notin L$ the plane spanned by $L$ and $Z$ meets $L'$ in exactly one point, which defines a projection $\PT'\to L'$ whose fibres are the affine planes $\mathrm{span}(L,Z)\setminus L\cong\C^2$. Thus $\PT'$ is the total space of a rank-2 vector bundle over $L'\cong\CP^1$ and deformation retracts onto $L'\cong S^2$, so $H^1(\PT';\R)=H^1(S^2;\R)=0$. Simplicial cohomology of a triangulation equals singular cohomology, and $\ker L_1^\star\cong H^1$ by~\eqref{e:hodge}.
+\end{proof}
+
+So the information of the Penrose transform is carried by the coefficient sheaf (holomorphy and homogeneity), not by the cochain complex of the space. DEC discretizes $d$, not $\bar\partial$; discrete holomorphy exists on surfaces~\cite{mercat} but no discrete $\bar\partial$-complex on a 3-dimensional complex with an analogue of the Eastwood--Penrose--Wells theorem is known to us. The items below are what does carry over.
+
+\subsection{Double fibration and fibre integration}
+In the twistor double fibration the transform is pull-back along $\mu$ followed by integration over the compact fibres of $\nu$. On the weight manifold the analogous fibres are the closed grid cycles.
+
+\begin{lemma}[discrete fibre integration is a cochain map]\label{l:fibre}
+Let $X=Y\times C_r$ be a product cell complex with $C_r$ a cycle of $r$ edges oriented coherently. Define $\pi_*:C^k(X)\to C^{k-1}(Y)$ by $(\pi_*c)(\sigma)=\sum_{e\in C_r}c(\sigma\times e)$. Then $\pi_*d=\pm d\pi_*$, with sign $(-1)^{\dim\sigma}$ fixed by the product orientation convention.
+\end{lemma}
+\begin{proof}
+For a $(k-1)$-cell $\sigma$ of $Y$, $(\pi_*dc)(\sigma)=\sum_e c(\partial(\sigma\times e))=\sum_e c(\partial\sigma\times e)\pm\sum_e c(\sigma\times\partial e)$. The second sum is $c(\sigma\times\partial[C_r])=0$ because the fundamental chain of a cycle has zero boundary. The first is $(\pi_*c)(\partial\sigma)=(d\pi_*c)(\sigma)$.
+\end{proof}
+
+On $\Tor^3$ the three axis projections are fibre integrations of this kind; they are the discrete X-ray transforms along the axis lines. With the DFT, Lemma~\ref{l:fibre} becomes the discrete projection-slice identity: the 2-D DFT of $\pi_*c$ equals the 3-D DFT of $c$ restricted to zero frequency along the integrated axis. Lines of other rational directions on $\Tor^3$ give further slices; the full space of oriented lines is the minitwistor space of $\R^3$~\cite{hitchin82}. Whether the consistency conditions among slices in different directions, the discrete counterpart of John's equation~\cite{john38}, carry information about merges is open (O5).
+
+\subsection{Twisted coefficients and Fourier sectors}
+The role of the sheaf $\cO(k)$ is played, on a cycle, by a rank-one local system. For $\beta\in\R$ let $L_\beta$ be the local system on $C_r$ with transport $e^{i\beta}$ along each edge, so the twisted coboundary is $(d_\beta f)_j=e^{i\beta}f_{j+1}-f_j$.
+
+\begin{prop}[twisted cohomology of a cycle]\label{p:twist}
+$H^0(C_r;L_\beta)\cong H^1(C_r;L_\beta)\cong\C$ if $r\beta\in2\pi\Z$, and both vanish otherwise. The DFT decomposes the untwisted complex $C^\bullet(C_r;\C)$ into $r$ one-dimensional complexes $\C\xrightarrow{e^{i\kappa}-1}\C$, $\kappa\in\frac{2\pi}{r}\Z$; the sector $\kappa$ of $C^\bullet(C_r;L_\beta)$ has differential $e^{i(\kappa+\beta)}-1$. Hence all cohomology sits in the single sector with $\kappa+\beta\in2\pi\Z$ if one exists.
+\end{prop}
+\begin{proof}
+$d_\beta$ is an $r\times r$ circulant-type matrix with $\det d_\beta=\pm(1-e^{ir\beta})$ (expand along the cycle); it is invertible iff $e^{ir\beta}\neq1$, and has one-dimensional kernel and cokernel otherwise. The Fourier vectors $e^{i\kappa j}$ diagonalize $d_\beta$ with eigenvalue $e^{i(\kappa+\beta)}-1$.
+\end{proof}
+\noindent By K\"unneth over $\C$, the twisted cohomology of the digit torus $T=\prod_jC_{r_j}$ with twists $\beta_j$ is $\bigotimes_jH^\bullet(C_{r_j};L_{\beta_j})$: it vanishes unless every twist is on the DFT grid of its digit, and then it is the untwisted cohomology moved to the Fourier sector $\kappa_j=-\beta_j$. This makes rigorous, at cochain level, the statement of~\cite{dtft} that true harmonics are the zero-frequency components, and shows that a rotation of RoPE type moves the cohomology layer in frequency rather than creating or removing it. The analogy with $\cO(k)$ is only structural: $H^1(\CP^1,\cO(k))\neq0$ iff $k\le-2$, while here cohomology is nonzero iff the holonomy is trivial.
+
+\subsection{The Klein correspondence over finite fields}
+The Klein correspondence is algebraic and holds over every field: lines of the projective space $PG(3,q)$ correspond bijectively to points of the hyperbolic quadric $Q^+(5,q)$ under Pl\"ucker coordinates~\cite{hirschfeld}. For $q=3$, $PG(3,3)$ has $40$ points and $130$ lines, and $Q^+(5,3)$ has $130$ points (checked by enumeration, \S\ref{s:sanity}). The incidence relation \emph{point on line} gives a finite double fibration, and pull-back and push-forward along it are incidence-matrix transforms of cochains. The field $\mathbb F_3$ has the same three elements as a trit, but BitNet arithmetic is integer, not modulo~3; whether a finite twistor geometry over $\mathbb F_3$ is to be attached to ternary codes is open (O6).
+
+\subsection{A discrete abelian Bogomolny equation on the weight torus}
+On a cubical complex $X$ with dual complex $\tilde X$ in dimension 3, primal 2-cochains and dual 1-cochains are paired by the star. Let $A\in C^1(X;\R)$ be a $U(1)$ connection with curvature $F=d_1A$ and $\Phi\in C^0(\tilde X;\R)$ a dual Higgs field. The discrete abelian Bogomolny equation is
+\begin{equation}\label{e:bog}
+d_1A=\star^{-1}\tilde d_0\Phi .
+\end{equation}
+
+\begin{prop}\label{p:bog}
+On the cubical 3-torus $\Tor^3$ with positive diagonal stars, every solution of \eqref{e:bog} has $\Phi$ constant and $A$ flat. Modulo gauge transformations $A\mapsto A+d_0\phi$ with $\phi$ valued in $\R/2\pi\Z$, the solutions are the flat connections, parametrized by the holonomies $(e^{i\Phi_s},e^{i\Phi_t},e^{i\Phi_u})\in U(1)^3$ around the three axis cycles; each class has a unique representative that is constant on the edges of each axis.
+\end{prop}
+\begin{proof}
+Applying $d_2$ to \eqref{e:bog} gives $0=d_2\star^{-1}\tilde d_0\Phi$. Up to stars, $d_2\star^{-1}$ is the transpose of $\tilde d_0$, so $0=\langle\Phi,\tilde d_0^{\top}\star^{-1}\tilde d_0\Phi\rangle=\|\tilde d_0\Phi\|^2_{\star^{-1}}$ and $\tilde d_0\Phi=0$; $\tilde X$ is connected, so $\Phi$ is constant and $d_1A=0$. Flat real 1-cochains modulo exact ones form $H^1(\Tor^3;\R)\cong\R^3$, and large gauge transformations shift the periods by $2\pi\Z^3$. The harmonic representative of a class on the square-filled torus with constant per-axis stars is constant along each axis (it lies in $\ker L_1$, which is spanned by the three axis-constant cochains).
+\end{proof}
+\noindent An axis-constant connection with per-edge angles $(\beta_s,\beta_t,\beta_u)$ is a three-axis RoPE on $\Tor^3$: commuting rotations, one generator per axis, as in~\cite{liuzhou}. So the source-free moduli of \eqref{e:bog} on the weight torus are exactly three-axis RoPE frequency triples modulo the DFT grid. Whether the singular necks of~\cite{surg}, the counterpart of the necks of Perelman's Ricci flow with surgery~\cite{perelman1,perelman2,perelman3}, should be treated as sources of \eqref{e:bog} is open (O7); they are 2-dimensional slabs in $\Tor^3$~\cite{mono}, not points, so the Dirac-monopole picture does not apply to them directly.
+
+\subsection{Summary of the transfer}
+\begin{center}\small
+\begin{tabular}{@{}p{4.2cm}p{5.2cm}p{5.6cm}@{}}\toprule
+Twistor object & Discrete counterpart & Status\\\midrule
+$H^1(\PT',\cO(k))$, contour integral & \v{C}ech cochain on a 2-set nerve & complex transfers; content needs holomorphic coefficients, which DEC lacks (Prop.~\ref{p:const})\\
+double fibration, fibre integral & product complex, $\pi_*$ over closed cycles & rigorous cochain map (Lemma~\ref{l:fibre})\\
+$\cO(k)$ on $\CP^1$ & local system $L_\beta$ on $C_r$ & rigorous; cohomology moves with the twist (Prop.~\ref{p:twist})\\
+Klein correspondence & $PG(3,q)\leftrightarrow Q^+(5,q)$ & rigorous; role in merging open\\
+minitwistor, X-ray transform & axis projections, projection-slice & rigorous for axis lines; John-type constraints open\\
+Bogomolny / Ward & \eqref{e:bog} on $\Tor^3$ & source-free case rigorous (Prop.~\ref{p:bog}); sources open\\
+helicity, conformal structure, non-abelian Ward & none & no discrete analogue derived\\\bottomrule
+\end{tabular}\end{center}
+
+\section{RoPE as a connection on cochains}\label{s:rope}
+\subsection{RoPE is a flat connection, pure gauge on the line}
+\begin{prop}\label{p:ropegauge}
+Let $P_n$ be the path graph on positions $0,\dots,n-1$. For plane $p$, $\phi_p(m)=mf_p$ is a 0-cochain with $d_0\phi_p\equiv f_p$ on every edge, and parallel transport along the edge $m\to m+1$ is $R_{f_p}$. The relative-position property $\langle R_mq,R_nk\rangle=\langle q,R_{n-m}k\rangle$ is the statement that the logit is invariant under the gauge transformation $\phi_p$. If the position axis is closed into a cycle $C_n$, the constant 1-cochain $f_p$ is harmonic with holonomy $e^{inf_p}$; it is exact, and RoPE is a gauge transformation, iff $nf_p\in2\pi\Z$.
+\end{prop}
+\begin{proof}
+$R_m$ is a group homomorphism $\Z\to SO(2)^{d_h/2}$ and $R_m^{\top}R_n=R_{n-m}$. On $C_n$, $\ker L_1$ is spanned by the constant cochain, and a constant $f$ is $d_0\phi$ for a well-defined $\phi$ on the cycle iff its period $nf$ is zero modulo $2\pi$.
+\end{proof}
+\noindent For the base, $f_0=1$ rad per token (period $6.28$ tokens) and $f_{63}=(5\cdot10^5)^{-126/128}\approx2.46\cdot10^{-6}$ (period $\approx2.56\cdot10^6$ tokens). Over a window of $n$ tokens the planes with $f_p<2\pi/n$ never complete a turn; for $n=4096$ these are $p\ge32$, half of the planes.
+
+\subsection{The symmetry group RoPE leaves on query and key weights}
+\begin{prop}[RoPE gauge group of a QK pair]\label{p:qkgauge}
+Let $q=W_qx$, $k=W_ky$ be one query head and its key head, with $W_q,W_k$ of full row rank, and let the frequencies $f_p\in(0,\pi)$ be pairwise distinct. The linear maps $(W_q,W_k)\mapsto(M_qW_q,M_kW_k)$ that leave $\langle R_mq,R_nk\rangle$ unchanged for all $x,y,m,n$ are exactly those with $M_q$ block-diagonal over the planes, each block a complex scalar $\lambda_p\in\C^\times$ acting on $\R^2\cong\C$, and $M_k=M_q^{-\top}$ (block $\bar\lambda_p^{-1}$). For a key--value group the same $\lambda_p$ must be used for all query heads of the group. The subgroup that maps every ternary row pair to a ternary row pair with the per-tensor scale unchanged is $\lambda_p\in\{1,i,-1,-i\}$, i.e.\ $(\Z/4)^{d_h/2}$ per group.
+\end{prop}
+\begin{proof}
+Invariance for all $x,y$ with full-rank weights is $M_q^{\top}R_\Delta M_k=R_\Delta$ for all $\Delta=n-m$. At $\Delta=0$, $M_k=M_q^{-\top}$; then $M_q^{\top}$ commutes with $R_1$. The eigenvalues $e^{\pm if_p}$ of $R_1$ are pairwise distinct because the $f_p$ are distinct and lie in $(0,\pi)$, so the commutant consists of maps preserving each plane and commuting there with a rotation by an angle not in $\pi\Z$, i.e.\ complex scalars. Sharing across a group follows because all query heads of the group meet the same $M_k$. For ternary preservation, $\lambda=a+bi$ must map $(1,0)$ to a trit pair, so $a,b\in\{-1,0,1\}$; $\lambda=\pm1\pm i$ maps $(1,1)$ or $(1,-1)$ to a pair containing $\pm2$; the remaining four values preserve trits, and $|\lambda|=1$ leaves the scale unchanged.
+\end{proof}
+\noindent For the base frequencies the hypothesis holds: $f_p=(5\cdot10^5)^{-p/64}$ decreases strictly from $1<\pi$. Without RoPE the corresponding group is $GL(d_h)$ (used in rotational form by~\cite{zhangrot}); RoPE reduces it from dimension $d_h^2=16384$ to $d_h=128$ real dimensions per group. The rescaling part $|\lambda_p|$ is partly the logit temperature that the merge already matches per layer~\cite{arch}; the phase part $\arg\lambda_p$ is not aligned by the seed, which uses permutations and cyclic shifts of grid cells~\cite{pv2,arch}. Under llama3 or linear scaling the distinctness of the scaled frequencies must be checked per configuration (O8).
+
+\paragraph{The RoPE remap as a frame change.} \code{ropeRemap} realizes $f^c_{s}=f^t_p$ with $s=p\ln\theta_t/\ln\theta_c$, the unique monotone matching of the two frequency ladders. When $s$ is an integer the remapped rows of plane $p$ rotate at exactly $f^t_p$. When $s$ is not an integer, the interpolated row is a combination of two contributor planes trained at frequencies $f^c_{\lfloor s\rfloor}\neq f^c_{\lceil s\rceil}$, and the remapped head is not equivariant under a single rotation frequency per plane; for Qwen3 into the base the ratio is $\ln(5\cdot10^5)/\ln(10^6)\approx0.9498$, so $s$ is non-integer for most $p$. This is an observation about the code, not a proposal to change it (O9).
+
+\subsection{Twists lift the harmonic zero mode}
+\begin{prop}[twisted spectrum]\label{p:spec}
+On $C_r$ with transport $e^{i\beta}$ per edge, the connection Laplacian $(L_\beta f)_j=2f_j-e^{-i\beta}f_{j+1}-e^{i\beta}f_{j-1}$ has eigenvalues $\lambda_k(\beta)=2-2\cos(\frac{2\pi k}{r}-\beta)$, $k=0,\dots,r-1$, with Fourier eigenvectors. Its smallest eigenvalue is $2-2\cos\big(\dist(\beta,\frac{2\pi}{r}\Z)\big)$, positive iff $r\beta\notin2\pi\Z$. On the digit torus with per-level twists $\beta_j$ the eigenvalues add over levels.
+\end{prop}
+\begin{proof}
+Direct substitution of $f_j=e^{2\pi ikj/r}$; the product case follows from the tensor structure of the Laplacian on a product complex.
+\end{proof}
+\begin{cor}[ending the $\omega=0$ degeneracy by a connection]\label{c:omega}
+In the normal-mode framework of~\cite{dtft}, (N1)--(N2), replacing the per-level stiffness by its twisted form gives the formerly harmonic mode $k=0$ the frequency $\omega_0(\beta)=2c_j\sin(|\beta|/2)$ for $|\beta|\le\pi/r_j$, and in general $\omega_k(\beta)=2c_j|\sin(\pi(k/r_j-\beta/2\pi))|$: the lattice dispersion relation with its origin moved from $\nu=0$ to $\nu=\beta/2\pi$.
+\end{cor}
+\noindent Thus the degeneracy that~\cite{dtft} proved intrinsic to $\ker L_1$ for every metric is lifted by a connection, which is not a metric. The price is that the kernel is no longer $H^1$ (Prop.~\ref{p:twist}); the topological information is then read from the $\beta$-dependence of the lowest eigenvalue, which is periodic in $\beta$ with period $2\pi/r_j$ and vanishes exactly on the DFT grid. Whether the band definition (H2) of~\cite{dtft} should use the twisted operator is open (O10).
+
+\subsection{Kuramoto dynamics with a phase connection}
+Let $G$ be the oscillator graph, $K_{ij}=K_{ji}\ge0$, and $A_{ij}=-A_{ji}$ a real 1-cochain on $G$:
+\begin{equation}\label{e:connK}
+\dot\theta_i=\omega_i+\sum_jK_{ij}\sin(\theta_j-\theta_i-A_{ij}).
+\end{equation}
+\begin{prop}[gauge covariance]\label{p:cov}
+$\theta$ solves \eqref{e:connK} with $A$ iff $\theta+\phi$ solves it with $A+d_0\phi$, for any constant $\phi\in C^0(G)$. Only the class of $A$ modulo exact cochains and $2\pi$-integral periods enters, i.e.\ the holonomies around the $\beta_1(G)$ independent cycles.
+\end{prop}
+\begin{prop}[gradient structure]\label{p:grad}
+If $\omega_i\equiv\bar\omega$, then in the frame rotating at $\bar\omega$, \eqref{e:connK} is $\dot\theta=-\nabla V$ with $V(\theta)=-\frac12\sum_{i,j}K_{ij}\cos(\theta_j-\theta_i-A_{ij})$. Every trajectory converges to a single equilibrium, so there is no chaos and no persistent drift. For the explicit tick $\theta\leftarrow\theta-\nabla V$ with $K_{ij}=2^{-g_\theta}c_{ij}/d_{\max}$ as in~\cite{pv2}, $V$ decreases at every tick.
+\end{prop}
+\begin{proof}
+Antisymmetry of $A$ makes the $(i,j)$ and $(j,i)$ terms of $V$ equal, so $\partial V/\partial\theta_i=-\sum_jK_{ij}\sin(\theta_j-\theta_i-A_{ij})$. $V$ is real-analytic on the compact torus, so the \L{}ojasiewicz inequality gives convergence of every gradient trajectory to one critical point. The Hessian of $V$ is a weighted Laplacian with weights $K_{ij}\cos(\cdot)$ of modulus at most $K_{ij}$, so its norm is at most $2\max_i\sum_jK_{ij}\le2^{1-g_\theta}$; with $g_\theta=4$ this is $1/8<2$, and the descent lemma gives $V(\theta-\nabla V)\le V(\theta)-\frac{15}{16}\|\nabla V\|^2$.
+\end{proof}
+\noindent The KTE tick of \code{dtft.go} uses the lifted difference instead of the sine; its potential $\frac12\sum K_{ij}\operatorname{lift}(\theta_j-\theta_i)^2$ is piecewise quadratic and discontinuous in its gradient at half a turn, so Proposition~\ref{p:grad} applies on each smooth piece only (O11).
+
+\begin{prop}[holonomy bound on frustration]\label{p:frust}
+For a cycle $\gamma$ of $|\gamma|$ edges with holonomy $\Phi_\gamma=\sum_{e\in\gamma}A_e$, every $\theta$ satisfies $\max_{e\in\gamma}|\wrap(\theta_j-\theta_i-A_e)|\ge\dist(\Phi_\gamma,2\pi\Z)/|\gamma|$.
+\end{prop}
+\begin{proof}
+The phase differences telescope around $\gamma$, so $\sum_{e\in\gamma}\wrap(\theta_j-\theta_i-A_e)\equiv-\Phi_\gamma\pmod{2\pi}$ and its modulus is at least $\dist(\Phi_\gamma,2\pi\Z)$; divide by $|\gamma|$.
+\end{proof}
+
+\begin{prop}[a symmetric lag is not a connection]\label{p:sym}
+A Sakaguchi lag $\alpha$ applied to both orientations of an edge equals a connection only if $\alpha\in\{0,\pi\}\pmod{2\pi}$; for other $\alpha$ the vector field of \eqref{e:connK} with $A$ replaced by $\alpha$ is not the gradient used in Proposition~\ref{p:grad}, and no gauge transformation or RoPE rotation removes it.
+\end{prop}
+\begin{proof}
+A connection requires $A_{ji}=-A_{ij}$; the lag requires $A_{ji}=A_{ij}=\alpha$; both hold modulo $2\pi$ iff $2\alpha\in2\pi\Z$. Gauge transformations add exact antisymmetric cochains and cannot change the symmetric part.
+\end{proof}
+
+\begin{prop}[twisted states under lag and connection]\label{p:tw}
+On the ring $C_N$ with nearest-neighbour coupling $K$, lag $\alpha$ and the $q$-twisted state $\theta_j=\Omega t+\delta j$, $\delta=2\pi q/N$, the linearization has eigenvalues $\lambda_k=K\cos(\delta-\alpha)(e^{ik}-1)+K\cos(\delta+\alpha)(e^{-ik}-1)$, so $\operatorname{Re}\lambda_k=2K\cos\delta\cos\alpha\,(\cos k-1)$, $k\in\frac{2\pi}{N}\Z$. A constant connection $A=\beta$ per edge maps the $q$-twisted state to the synchronous state when $\beta=\delta$ and leaves the spectrum unchanged.
+\end{prop}
+\begin{proof}
+Linearize $\sin(\theta_{j\pm1}-\theta_j-\alpha)$ at $\pm\delta-\alpha$ and use Fourier modes. The connection case is Proposition~\ref{p:cov} with $\phi_j=\delta j$, which is a valid 0-cochain on the cycle because $N\delta\in2\pi\Z$.
+\end{proof}
+\noindent With $\alpha=0$ this is the stability criterion $|\delta|<\pi/2$ of~\cite{wiley}. Two consequences follow. First, a gauge rotation cannot change linear stability, so it cannot calm anything in the sense of changing dynamics; it relabels states. Second, for $\cos\alpha<0$ every nonzero lattice mode is unstable. The formal continuum expansion $\dot\theta=\Omega+K\cos\alpha(\theta_{xx}+\tfrac1{12}\theta_{xxxx})+K\sin\alpha\,\theta_x^2+\dots$ has Kuramoto--Sivashinsky form for $\cos\alpha<0$, but its short-wave cutoff $k^2=12$ lies outside the Brillouin zone $|k|\le\pi$, so on a nearest-neighbour axis the KS equation is not the right effective model; it requires a coupling kernel whose dispersion stabilizes short waves, as in the phase reduction of reaction--diffusion media near the Benjamin--Feir threshold~\cite{kuramototsuzuki,kuramoto84}. For $\cos\alpha>0$ the truncation $\theta_t=a\theta_{xx}+b\theta_x^2$ is linearized by the Cole--Hopf substitution $u=e^{b\theta/a}$ and is not turbulent.
+
+\begin{prop}[a common frame cannot change lock decisions]\label{p:frame}
+Let a lock declare oscillator $i$ locked to its reference $\rho(i)$ when the lifted difference $\theta_i-\theta_{\rho(i)}$ stays within $W_{\rm lock}$ over a window, as in R-KTE-2 of~\cite{dtft}. Under any common rotation $\theta_i\mapsto\theta_i-\Omega t$ the lock set is unchanged. Under per-oscillator rotations $\theta_i\mapsto\theta_i-\Omega_it$ the system becomes non-autonomous with couplings $\sin(\psi_j-\psi_i+(\Omega_j-\Omega_i)t)$, and the lock set, computed in the original coordinates, is again unchanged.
+\end{prop}
+\begin{proof}
+Differences are invariant under a common rotation. Per-oscillator rotations are a change of variables; the lock criterion is a property of the trajectory in the original coordinates, which the change of variables does not alter.
+\end{proof}
+\noindent In particular, rotating each contributor by its measured DTFT offset does not make it lock. Removing the offsets from the dynamics requires changing the coupling as well, and the result is a different system: the $\omega=0$ lock that~\cite{dtft} showed to be uninformative.
+
+\subsection{The harmonic-frame theorem}
+\begin{thm}[RoPE on the harmonic layer]\label{t:hf}
+Let $X$ be a finite cell complex, $\psi\in C^k(X)$, and consider \eqref{e:simpK}, or its weighted form with $d_{k-1},d_k^{\top}$ replaced by their $\star$-adjoint versions. Let $P_\cH$ be the $\star_k$-orthogonal projection onto $\cH^k$, and $h\in\cH^k$.
+\begin{enumerate}\itemsep1pt
+\item[(i)] For all coupling strengths $\sigma_\pm$ and all initial data, $P_\cH\psi(t)=P_\cH\psi(0)+t\,P_\cH\omega$.
+\item[(ii)] $\psi$ solves \eqref{e:simpK} with frequencies $\omega$ iff $\psi-th$ solves it with $\omega-h$. With $h=P_\cH\omega$, the harmonic component of $\psi-th$ is constant.
+\item[(iii)] The exact and coexact projections of $\psi-th$ coincide with those of $\psi$ at every time; their dynamics does not depend on $h$.
+\item[(iv)] The same three statements hold for the explicit tick $\psi\leftarrow\psi+\omega-\sigma_-d_{k-1}\sin(d_{k-1}^{\top}\psi)-\sigma_+d_k^{\top}\sin(d_k\psi)$ with $t$ replaced by the tick count.
+\end{enumerate}
+\end{thm}
+\begin{proof}
+A harmonic cochain satisfies $d_{k-1}^{\top}h=0$ and $d_kh=0$ (in the weighted case, the corresponding $\star$-adjoint identities). Hence $\sin(d_{k-1}^{\top}(\psi-th))=\sin(d_{k-1}^{\top}\psi)$ and $\sin(d_k(\psi-th))=\sin(d_k\psi)$, which gives (ii). The coupling terms lie in $\im d_{k-1}\oplus\im d_k^{\top}$, which is orthogonal to $\cH^k$ by~\eqref{e:hodge}, so $P_\cH\dot\psi=P_\cH\omega$, which is (i) and shows that no $\sigma_\pm$ affects it. Subtracting $th$ changes only the harmonic component, which gives (iii). The tick is affine in the same way.
+\end{proof}
+\noindent The rotation $\psi_e\mapsto\psi_e-th_e$ has the structure of RoPE: the angle of cell $e$ is position (here time or tick) times a frequency $h_e$; the theorem restricts the frequency vector to the harmonic space. For $k=0$ on a connected graph, $\cH^0$ is the constants and the theorem is the usual rotating frame at the mean frequency. For $k=1$ on the square-filled digit torus, $\cH^1$ is spanned by the $\beta_1$ axis-constant cochains of the long digits, so the frame is a per-digit-axis RoPE with frequencies $P_\cH\omega$. The theorem identifies precisely what the frame calms: the quasi-periodic drift of the cohomology component, which coupling cannot remove at any strength. It does not calm chaos in the exact or coexact components, which are untouched by (iii); the frustrated dynamics studied in~\cite{arnaudon} live there.
+
+\subsection{Conjectures}
+\begin{conj}[twist stiffening]\label{cj:stiff}
+In a finite population lock whose oscillators are band modes with frequencies from (N1)--(N2), replacing the stiffness by its twisted form (Corollary~\ref{c:omega}) with twist at the base's measured sub-bin frequency lowers the largest Lyapunov exponent of the population in the phase-chaos regime of~\cite{popovych}, at equal coupling.
+\end{conj}
+\begin{conj}[holonomy-matched coupling]\label{cj:hol}
+In the connection Kuramoto model \eqref{e:connK} on a contributor graph, choosing $A$ equal to minus the measured relative holonomy of~\cite{mono} on each fundamental cycle reduces the number of stable equilibria and raises the basin of the synchronous state relative to $A=0$.
+\end{conj}
+\begin{conj}[cohomology-layer coherence]\label{cj:coh}
+If the DTFT lock is reformulated with edge phases on the weight complex as in \eqref{e:simpK}, the locked fraction of the exact and coexact components is independent of the harmonic frame frequency, while the reported order parameter $r$ computed on all components rises after the frame of Theorem~\ref{t:hf} is applied, because the harmonic drift no longer dephases it.
+\end{conj}
+\noindent Conjecture~\ref{cj:coh} would make the frame a change in measurement, not in dynamics; that distinction is itself a prediction (Q5).
+
+\section{Mapping onto the hodgemix weight 3-manifold and locks}\label{s:map}
+\subsection{Three index spaces}
+\begin{center}\small
+\begin{tabular}{@{}p{2.8cm}p{4.2cm}p{4.0cm}p{4.0cm}@{}}\toprule
+Space & Objects & RoPE today & What this paper adds\\\midrule
+token position $\times$ plane & activations $q,k$ at runtime & \code{rope.wgsl}, $\theta=5\cdot10^5$ & flat connection, pure gauge (Prop.~\ref{p:ropegauge})\\
+weight 3-manifold $(s,t,u)$, $\Tor^3$, digit torus & weights as cochains, Hodge split, DFT & \code{ropeRemap} on the plane index of $q,k$ rows only & 3-axis twists = flat connections = Bogomolny moduli (Prop.~\ref{p:bog}); sectors (Prop.~\ref{p:twist}); twisted stiffness (Cor.~\ref{c:omega})\\
+oscillator graph & (contributor, band mode); (limb, harmonic bin) & none & connection Kuramoto (Props.~\ref{p:cov}--\ref{p:frame}); harmonic frame (Thm.~\ref{t:hf})\\\bottomrule
+\end{tabular}\end{center}
+
+\subsection{The weight 3-manifold}
+Each role's manifold carries three periodic axes after the DFT. A three-axis RoPE on it is a choice of $(\beta_s,\beta_t,\beta_u)$, equivalently a point of the Bogomolny moduli $U(1)^3$ of Proposition~\ref{p:bog}, and it acts on the merge by moving the cohomology layer to the Fourier sector $-\beta$ (Prop.~\ref{p:twist}) or, as a stiffness, by lifting the harmonic zero mode (Prop.~\ref{p:spec}). Which axis receives which twist, whether the layer axis is periodic, and whether twists are shared across roles glued along the residual, head and FFN axes~\cite{mono} are open (O12, O13). For $q$ and $k$ the output axis is the head axis with its plane structure; Proposition~\ref{p:qkgauge} says that the admissible frame changes along that axis, for a RoPE model, are per-plane complex scalars and, in ternary, the per-plane $\Z/4$. These are the structure group of the merge bundle of~\cite{mono} restricted to the $q,k$ output axis; whether they are added to the seed is open (O14).
+
+\subsection{The DTFT lock}
+In the DTFT lock the oscillators are pairs (contributor, band mode), the band is the quasi-harmonic part of $L_1$ on the digit torus, and the natural frequencies are DTFT offsets~\cite{dtft}. By Proposition~\ref{p:frame}, no rotating frame changes which modes pass (L2) or the window criterion; by Corollary~\ref{c:omega}, a twist changes the frequencies themselves and therefore the lock. The heterodyne reading of Corollary~\ref{c:omega} connects the twist with the DTFT front end: setting $\beta_j=2\pi\hat\nu_{\rm base}$ places the base's measured peak at the bottom of the twisted dispersion relation. On the grid this peak becomes an exact zero mode of the twisted operator (Prop.~\ref{p:twist}); off the grid, as for sub-bin $\hat\nu$, it is only the minimum. Whether this is adopted, and in which units ($\nu$ per digit level or per axis), is open (O10, O15). The KTE tick in turns with lifted differences is the coupling actually run; Propositions~\ref{p:grad}--\ref{p:frust} are stated for the sine and transfer to the lift only piecewise (O11).
+
+\subsection{The limb lock}
+\code{lockLimb} runs the sinusoidal tick with $\omega_i=0$, $A=0$ and all-to-all coupling. This is the identical-frequency case of Proposition~\ref{p:grad}: a gradient flow with no chaos and no drift. There is no turbulence in it to calm, and any common RoPE frame is the identity on its lock decisions (Prop.~\ref{p:frame}). By Proposition~1 of~\cite{dtft}, initial conditions in an open half circle converge to full lock. A twist or connection would change this lock; whether the limb lock should carry one is open (O16).
+
+\subsection{The cohomology layer}
+On the square-filled digit torus of a $2560\times6912$ tensor, $\beta_1=4$~\cite{dtft}, so $\cH^1$ is 4-dimensional and the harmonic frame of Theorem~\ref{t:hf} is one frequency per long digit. On the unfilled bipartite channel graph, $\beta_1=(m-1)(n-1)$~\cite{dtft} and nearly every cochain is harmonic, so the frame would act on almost the whole signal. Which complex defines the layer is open (O2).
+
+\subsection{Champ impact}
+Nothing here changes the runtime. Champ applies RoPE with the base $\theta$ and scaling copied from the base configuration (C9 of the binding requirements); changing $\theta$ or adopting a variant such as p-RoPE~\cite{barbero} in the output would violate that requirement. A per-plane $\Z/4$ gauge baked into $q,k$ codes preserves ternary values, tensor names, shapes and the single \code{weight_scale}, and commutes with \code{rope.wgsl}; it is Champ-neutral by Proposition~\ref{p:qkgauge}. Twists, connections and harmonic frames act only inside the offline merge. If their parameters are to be recorded in the BNZ4 index, the field layout is open (O17).
+
+\section{Predictions}\label{s:pred}
+\begin{enumerate}\itemsep1pt
+\item[Q1] (Theorem~\ref{t:hf}) On any small complex, the harmonic component of simplicial Kuramoto phases drifts at exactly $P_\cH\omega$ for every $\sigma_\pm$, including $\sigma_\pm\to\infty$; in the harmonic frame it is constant; exact and coexact components are identical with and without the frame.
+\item[Q2] (Prop.~\ref{p:frust}) On a ring with constant connection and holonomy $\Phi$, the steady maximal edge error equals $\dist(\Phi,2\pi\Z)/N$ for the uniformly distributed state.
+\item[Q3] (Prop.~\ref{p:grad}) With identical frequencies and any antisymmetric $A$, the largest Lyapunov exponent is $\le0$ up to integration error; with a symmetric lag and distributed frequencies, positive exponents can occur.
+\item[Q4] (Prop.~\ref{p:spec}) The lowest eigenvalue of the twisted digit-torus Laplacian follows $2-2\cos(\dist(\beta,\frac{2\pi}{r}\Z))$ and is periodic in $\beta$.
+\item[Q5] (Prop.~\ref{p:frame}, Conj.~\ref{cj:coh}) Lock sets are unchanged by any rotating frame; they change under twisted stiffness.
+\item[Q6] (Prop.~\ref{p:qkgauge}) Applying a random per-plane $\Z/4$ to a source's $q,k$ leaves its logits unchanged at every position pair; the permutation seed does not undo it, and $q,k$ alignment error after the seed is larger than with the $\Z/4$ undone.
+\item[Q7] (RoPE remap) For non-integer $s$, the remapped head's logit at relative offset $\Delta$ deviates from the contributor's at the matched frequency by an amount growing with $|\Delta|$ and with the gap $f^c_{\lfloor s\rfloor}-f^c_{\lceil s\rceil}$.
+\item[Q8] (Conj.~\ref{cj:stiff}) In the phase-chaos regime, twisted stiffness at the base's frequency lowers the largest Lyapunov exponent at equal coupling.
+\item[Q9] (Prop.~\ref{p:tw}) On a nearest-neighbour ring along one MRH axis with $\cos\alpha<0$, every nonzero lattice mode is unstable; no KS-type short-wave stabilization is seen.
+\end{enumerate}
+
+\section{Protocol on tiny synthetic systems}\label{s:proto}
+All runs are Go programs under a time limit, on synthetic objects only; no model file of any size is read, and nothing of 2B scale is constructed.
+\begin{enumerate}\itemsep1pt
+\item Complexes: cycles $C_r$, $r\le16$; digit tori with $r_j\in\{2,3,5\}$ and at most 3 levels; the square-filled $3\times3$ and $5\times3$ tori; unfilled bipartite graphs $K_{m,n}$, $m,n\le6$.
+\item Q1, Q2, Q4: exact projections by dense linear algebra; RK4 with step $\le10^{-3}$ and the explicit tick; stars unit, per-level and random positive.
+\item Q3, Q8: populations of $N\le32$ oscillators, Lorentzian frequencies, Benettin Lyapunov estimate with renormalization; 10 seeds per point; acceptance by the empirical 95th percentile over seeds.
+\item Q5: locks with the R-KTE-2 window criterion and $N_{\rm lost}=255$, frames and twists applied separately.
+\item Q6, Q7: one attention head pair with $d_h\le16$, input width $\le64$, ternary codes with absmean scale, positions $\le256$; random per-plane $\Z/4$; the permutation seed run on the resulting grids.
+\item Q9: rings of $N\le64$ with lag $\alpha$ swept over $(-\pi,\pi]$.
+\end{enumerate}
+
+\subsection{Arithmetic sanity checks performed}\label{s:sanity}
+The program \code{twistor_rope_sanity/main.go} (Go, under a 60\,s limit; output in \code{sanity_output.txt}) checks identities only: twisted-cycle eigenvalues and the minimum formula ($r=7$, residual $5\cdot10^{-15}$); $|\det d_\beta|=|1-e^{ir\beta}|$ on $C_6$; Theorem~\ref{t:hf} on the $3\times3$ square-filled torus with random $\omega$ ($\beta_1=2$; drift law error $4\cdot10^{-15}$, frame identity $10^{-14}$); monotone $V$ for a 6-node connection Kuramoto; equality in Proposition~\ref{p:frust} on $C_6$ with $N\beta=3$; the twisted-state spectrum with lag ($N=8$); invariance of RoPE logits under a per-plane rotation ($d_h=16$, $\theta=5\cdot10^5$); $|PG(3,3)|=40$, $130$ lines, all Pl\"ucker images on the Klein quadric, $|Q^+(5,3)|=130$; and Lemma~\ref{l:fibre} on $C_4\times C_3$. These are not experiments and support no claim about merging.
+
+\section{Open items}\label{s:open}
+None of the following is decided in this paper.
+\begin{enumerate}\itemsep1pt
+\item[O1] \emph{Twistor space.} Penrose's $\PT$ for 4-dimensional space-time, Hitchin's minitwistor space for 3-manifolds (the natural one for a weight 3-manifold), or the finite geometry $PG(3,q)$.
+\item[O2] \emph{The cohomology layer.} The true harmonics $\ker L_1$ of the square-filled digit torus ($\beta_1=4$), the quasi-harmonic band (H2) of~\cite{dtft}, the harmonic bins of the limb lock, $\cH^0$ of the oscillator graph, or $\cH^1$ of the unfilled channel graph. A reading of the term as chronology (tick time) or as chromatic structure is also possible.
+\item[O3] \emph{Turbulence.} Finite-$N$ phase chaos, quasi-periodic drift of the harmonic component, KS-type phase turbulence along a spatial axis, frustration and multistability, or non-convergence of $r$ under the refine rule (Eq.~20 of~\cite{pv2}).
+\item[O4] \emph{Which RoPE.} The runtime RoPE on token positions, or a RoPE-type rotation inside the merge (frame of Theorem~\ref{t:hf}, twist of Corollary~\ref{c:omega}, connection of \eqref{e:connK}).
+\item[O5] Whether consistency conditions among DFT slices in several directions (discrete John-type constraints) are used.
+\item[O6] Whether trits are read as elements of $\mathbb F_3$ for any purpose, and whether $PG(3,3)$ plays a role.
+\item[O7] Whether surgery necks are sources of \eqref{e:bog}, and if so which charge, given that they are slabs and not points.
+\item[O8] Frequency distinctness under llama3 and linear scaling for Proposition~\ref{p:qkgauge}.
+\item[O9] Treatment of non-integer $s$ in the RoPE remap: interpolation as now, nearest plane, or another rule.
+\item[O10] Whether the band (H2) and the stiffness (N1) of~\cite{dtft} use the twisted operator, and the twist values: on-grid only, the base's sub-bin $\hat\nu$, or free.
+\item[O11] Whether the theorems are to be restated for the lifted (sawtooth) coupling of the KTE tick, or the sine coupling is adopted in the lock.
+\item[O12] Assignment of twists to the axes $(s,t,u)$ (output, input, layer) and whether the layer axis is periodic (also O1 of~\cite{mono}).
+\item[O13] Whether twists are shared across roles glued along the residual, head and FFN axes.
+\item[O14] Whether the per-plane $\C^\times$ (float sources) or $\Z/4$ (ternary) gauge enters the seed, and in which order relative to the permutation and the cyclic shift.
+\item[O15] Units and scope of the heterodyne twist: per digit level, per axis, per tensor or per role.
+\item[O16] Whether the limb lock carries a connection or twist, given that without one it is a gradient flow.
+\item[O17] Whether harmonic-frame frequencies $P_\cH\omega$, twists $\beta$ and connection holonomies are recorded in BNZ4, and the field layout.
+\item[O18] Phase support of the lock: vertex oscillators as now, or edge phases on the weight complex as in \eqref{e:simpK}.
+\item[O19] Stars for the harmonic projection: unit, per-level, or data-derived.
+\item[O20] Acceptance thresholds for Q1--Q9 beyond the seed-percentile rule.
+\end{enumerate}
+
+\begin{thebibliography}{99}\small
+\bibitem{pv2} G.~Disney-Leugers, Hodge--Kuramoto ternary model merging (paper\_v2), Encryptid Systems, 2026.
+\bibitem{dtft} G.~Disney-Leugers, DTFT frequency assignment for selective Hodge--Kuramoto lock, Encryptid Systems, 2026.
+\bibitem{surg} G.~Disney-Leugers, Singularity surgery for Hodge--Kuramoto model merging, Encryptid Systems, 2026.
+\bibitem{mono} G.~Disney-Leugers, Monodromy, the Riemann--Hilbert problem and mixture-of-experts on the hodgemix weight 3-manifold, Encryptid Systems, 2026.
+\bibitem{arch} G.~Disney-Leugers, The hodgemix ternary transformer, version 2, Encryptid Systems, 2026.
+\bibitem{penrose67} R.~Penrose, Twistor algebra, J.\ Math.\ Phys.\ 8 (1967) 345--366. doi:10.1063/1.1705200.
+\bibitem{penrose69} R.~Penrose, Solutions of the zero-rest-mass equations, J.\ Math.\ Phys.\ 10 (1969) 38--39. doi:10.1063/1.1664756.
+\bibitem{epw} M.~G.~Eastwood, R.~Penrose, R.~O.~Wells Jr., Cohomology and massless fields, Comm.\ Math.\ Phys.\ 78 (1981) 305--351. doi:10.1007/BF01942327.
+\bibitem{ward77} R.~S.~Ward, On self-dual gauge fields, Phys.\ Lett.\ A 61 (1977) 81--82. doi:10.1016/0375-9601(77)90842-8.
+\bibitem{atiyahward} M.~F.~Atiyah, R.~S.~Ward, Instantons and algebraic geometry, Comm.\ Math.\ Phys.\ 55 (1977) 117--124. doi:10.1007/BF01626514.
+\bibitem{ahs} M.~F.~Atiyah, N.~J.~Hitchin, I.~M.~Singer, Self-duality in four-dimensional Riemannian geometry, Proc.\ R.\ Soc.\ Lond.\ A 362 (1978) 425--461.
+\bibitem{adm17} M.~Atiyah, M.~Dunajski, L.~J.~Mason, Twistor theory at fifty: from contour integrals to twistor strings, Proc.\ R.\ Soc.\ A 473 (2017) 20170530. doi:10.1098/rspa.2017.0530.
+\bibitem{huggetttod} S.~A.~Huggett, K.~P.~Tod, An Introduction to Twistor Theory, LMS Student Texts 4, Cambridge University Press, 2nd ed., 1994.
+\bibitem{wardwells} R.~S.~Ward, R.~O.~Wells Jr., Twistor Geometry and Field Theory, Cambridge University Press, 1990.
+\bibitem{bastoneastwood} R.~J.~Baston, M.~G.~Eastwood, The Penrose Transform: Its Interaction with Representation Theory, Oxford University Press, 1989.
+\bibitem{hitchin82} N.~J.~Hitchin, Monopoles and geodesics, Comm.\ Math.\ Phys.\ 83 (1982) 579--602. doi:10.1007/BF01208717.
+\bibitem{jonestod} P.~E.~Jones, K.~P.~Tod, Minitwistor spaces and Einstein--Weyl spaces, Class.\ Quantum Grav.\ 2 (1985) 565. doi:10.1088/0264-9381/2/4/021.
+\bibitem{john38} F.~John, The ultrahyperbolic differential equation with four independent variables, Duke Math.\ J.\ 4 (1938) 300--322. doi:10.1215/S0012-7094-38-00423-5.
+\bibitem{hirschfeld} J.~W.~P.~Hirschfeld, Finite Projective Spaces of Three Dimensions, Oxford University Press, 1985.
+\bibitem{botttu} R.~Bott, L.~W.~Tu, Differential Forms in Algebraic Topology, Graduate Texts in Mathematics 82, Springer, 1982.
+\bibitem{hirani} A.~N.~Hirani, Discrete Exterior Calculus, PhD thesis, California Institute of Technology, 2003. doi:10.7907/ZHY8-V329.
+\bibitem{dhlm} M.~Desbrun, A.~N.~Hirani, M.~Leok, J.~E.~Marsden, Discrete exterior calculus, arXiv:math/0508341, 2005.
+\bibitem{whitney} H.~Whitney, Geometric Integration Theory, Princeton University Press, 1957.
+\bibitem{dodziuk} J.~Dodziuk, Finite-difference approach to the Hodge theory of harmonic forms, Amer.\ J.\ Math.\ 98 (1976) 79--104. doi:10.2307/2373615.
+\bibitem{afw} D.~N.~Arnold, R.~S.~Falk, R.~Winther, Finite element exterior calculus, homological techniques, and applications, Acta Numerica 15 (2006) 1--155.
+\bibitem{eckmann} B.~Eckmann, Harmonische Funktionen und Randwertaufgaben in einem Komplex, Comment.\ Math.\ Helv.\ 17 (1944) 240--255.
+\bibitem{lim} L.-H.~Lim, Hodge Laplacians on graphs, SIAM Review 62 (2020) 685--715.
+\bibitem{schaub} M.~T.~Schaub, A.~R.~Benson, P.~Horn, G.~Lippner, A.~Jadbabaie, Random walks on simplicial complexes and the normalized Hodge 1-Laplacian, SIAM Review 62 (2020) 353--391. doi:10.1137/18M1201019.
+\bibitem{shubin} M.~A.~Shubin, Discrete magnetic Laplacian, Comm.\ Math.\ Phys.\ 164 (1994) 259--275. doi:10.1007/BF02101702.
+\bibitem{kenyon} R.~Kenyon, Spanning forests and the vector bundle Laplacian, Ann.\ Probab.\ 39 (2011) 1983--2017.
+\bibitem{singerwu} A.~Singer, H.-T.~Wu, Vector diffusion maps and the connection Laplacian, Comm.\ Pure Appl.\ Math.\ 65 (2012) 1067--1144.
+\bibitem{mercat} C.~Mercat, Discrete Riemann surfaces and the Ising model, Comm.\ Math.\ Phys.\ 218 (2001) 177--216. doi:10.1007/s002200000348.
+\bibitem{rope} J.~Su, M.~Ahmed, Y.~Lu, S.~Pan, W.~Bo, Y.~Liu, RoFormer: enhanced transformer with rotary position embedding, Neurocomputing 568 (2024) 127063. doi:10.1016/j.neucom.2023.127063. arXiv:2104.09864.
+\bibitem{liuzhou} H.~Liu, H.~Zhou, Rethinking RoPE: a mathematical blueprint for N-dimensional positional encoding, arXiv:2504.06308, 2025.
+\bibitem{barbero} F.~Barbero, A.~Vitvitskyi, C.~Perivolaropoulos, R.~Pascanu, P.~Veli\v{c}kovi\'c, Round and round we go! What makes rotary positional encodings useful?, ICLR 2025. arXiv:2410.06205.
+\bibitem{zhangrot} B.~Zhang, Z.~Zheng, Z.~Chen, J.~Li, Beyond the permutation symmetry of transformers: the role of rotation for model fusion, Proc.\ ICML 2025, PMLR 267:77090--77106. arXiv:2502.00264.
+\bibitem{bitnet2b4t} S.~Ma et al., BitNet b1.58 2B4T technical report, arXiv:2504.12285, 2025.
+\bibitem{kuramoto75} Y.~Kuramoto, Self-entrainment of a population of coupled non-linear oscillators, in: H.~Araki (ed.), International Symposium on Mathematical Problems in Theoretical Physics, Lecture Notes in Physics 39, Springer, 1975, 420--422.
+\bibitem{kuramoto84} Y.~Kuramoto, Chemical Oscillations, Waves, and Turbulence, Springer, 1984. doi:10.1007/978-3-642-69689-3.
+\bibitem{strogatz} S.~H.~Strogatz, From Kuramoto to Crawford, Physica D 143 (2000) 1--20.
+\bibitem{ott} E.~Ott, T.~M.~Antonsen, Low dimensional behavior of large systems of globally coupled oscillators, Chaos 18 (2008) 037113. doi:10.1063/1.2930766.
+\bibitem{sakaguchi} H.~Sakaguchi, Y.~Kuramoto, A soluble active rotator model showing phase transitions via mutual entrainment, Prog.\ Theor.\ Phys.\ 76 (1986) 576--581. doi:10.1143/PTP.76.576.
+\bibitem{wiley} D.~A.~Wiley, S.~H.~Strogatz, M.~Girvan, The size of the sync basin, Chaos 16 (2006) 015103.
+\bibitem{popovych} O.~V.~Popovych, Y.~L.~Maistrenko, P.~A.~Tass, Phase chaos in coupled oscillators, Phys.\ Rev.\ E 71 (2005) 065201(R). doi:10.1103/PhysRevE.71.065201.
+\bibitem{kuramototsuzuki} Y.~Kuramoto, T.~Tsuzuki, Persistent propagation of concentration waves in dissipative media far from thermal equilibrium, Prog.\ Theor.\ Phys.\ 55 (1976) 356--369. doi:10.1143/PTP.55.356.
+\bibitem{sivashinsky} G.~I.~Sivashinsky, Nonlinear analysis of hydrodynamic instability in laminar flames I. Derivation of basic equations, Acta Astronautica 4 (1977) 1177--1206.
+\bibitem{aransonkramer} I.~S.~Aranson, L.~Kramer, The world of the complex Ginzburg--Landau equation, Rev.\ Mod.\ Phys.\ 74 (2002) 99--143. doi:10.1103/RevModPhys.74.99.
+\bibitem{millan} A.~P.~Mill\'an, J.~J.~Torres, G.~Bianconi, Explosive higher-order Kuramoto dynamics on simplicial complexes, Phys.\ Rev.\ Lett.\ 124 (2020) 218301. doi:10.1103/PhysRevLett.124.218301.
+\bibitem{arnaudon} A.~Arnaudon, R.~L.~Peach, G.~Petri, P.~Expert, Connecting Hodge and Sakaguchi--Kuramoto through a mathematical framework for coupled oscillators on simplicial complexes, Commun.\ Phys.\ 5 (2022) 211. doi:10.1038/s42005-022-00963-7.
+\bibitem{perelman1} G.~Perelman, The entropy formula for the Ricci flow and its geometric applications, arXiv:math/0211159, 2002.
+\bibitem{perelman2} G.~Perelman, Ricci flow with surgery on three-manifolds, arXiv:math/0303109, 2003.
+\bibitem{perelman3} G.~Perelman, Finite extinction time for the solutions to the Ricci flow on certain three-manifolds, arXiv:math/0307245, 2003.
+\end{thebibliography}
+\end{document}

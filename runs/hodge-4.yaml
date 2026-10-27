@@ -6,7 +6,7 @@ base:
   special_tokens_map: C:\Users\grego\models\dev\hodge-vaultgemma-1\special_tokens_map.json
   generation_config: C:\Users\grego\EncryptidSystems\stage-ai\models\hodge-1\generation_config.json
 sources:
-  - model: C:\Users\grego\Downloads\model.safetensors
+  - model: C:\Users\grego\Downloads\gemma4.safetensors
     weight: 1
     tokenizer: C:\Users\grego\Downloads\tokenizer (2).json
     tokenizer_config: C:\Users\grego\Downloads\tokenizer_config (3).json

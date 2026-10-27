@@ -19,8 +19,10 @@ package main
 // rms for the token (every sublayer input passes an RMSNorm, so the model is scale-free per block).
 // On those currents, d0 phi(e) = phi(head) - phi(tail); the gradient part of f is d0 phi with L0 phi = d0^T f
 // (L0 = d0^T d0, the graph Laplacian, conjugate gradient), the rest f - d0 phi is the cycle part:
-// divergence-free, so d0^T of it is 0 (the Stokes check). The graph has no 2-cells, so its whole cycle
-// space is harmonic: loops such as a residual carry against the sublayer path around it.
+// divergence-free, so d0^T of it is 0 (the Stokes check). Each residual cell also carries two 2-cells,
+// digons of the net sublayer write against the residual carry (attention, then feed-forward). The
+// write edge's current is that net write. Circulation around a face is write minus carry, and the
+// harmonic part is the divergence-free part with that circulation removed.
 // No paper equation.
 
 import (
@@ -46,10 +48,12 @@ const (
 	ecGating
 	ecDown
 	ecCarryF
+	ecWriteA
+	ecWriteF
 	ecN
 )
 
-var ecName = [ecN]string{"q", "k", "v", "attention", "o", "carry attn", "gate", "up", "gating", "down", "carry ffn"}
+var ecName = [ecN]string{"q", "k", "v", "attention", "o", "carry attn", "gate", "up", "gating", "down", "carry ffn", "write attn", "write ffn"}
 
 // complex is the 1-skeleton: every edge's tail and head node, its class and layer.
 type flowComplex struct {
@@ -58,8 +62,18 @@ type flowComplex struct {
 	class      []uint8
 	layer      []int16
 	off        []int // layer l's node block starts at off[l] (D_l first); off[L] is D_L
+	face       []flowFace
 	c          eval.Cells
 	L          int
+}
+
+// flowFace is one residual digon: the net write edge against the carry edge of the same cell.
+// kind 0 is attention, kind 1 is the feed-forward. Circulation is f(write) - f(carry).
+type flowFace struct {
+	write, carry int
+	layer        int16
+	cell         int32
+	kind         uint8
 }
 
 // node block of one layer: D, Dm, q, k, v, A, gate, up, H (D_{l+1} is the next block's D).
@@ -120,8 +134,43 @@ func newFlowComplex(L int, cells eval.Cells) *flowComplex {
 		for i := 0; i < cells.ND; i++ {
 			add(Dm+i, Dn+i, ecCarryF, l)
 		}
+		// Net writes, parallel to the carries. Their currents are the row sums of o and down.
+		for i := 0; i < cells.ND; i++ {
+			add(D+i, Dm+i, ecWriteA, l)
+		}
+		for i := 0; i < cells.ND; i++ {
+			add(Dm+i, Dn+i, ecWriteF, l)
+		}
 	}
+	c.pairFaces()
 	return c
+}
+
+// pairFaces matches each write edge with the carry it runs against, in cell order.
+func (c *flowComplex) pairFaces() {
+	type key struct {
+		layer int16
+		class uint8
+	}
+	idx := map[key][]int{}
+	for e := range c.tail {
+		k := key{c.layer[e], c.class[e]}
+		idx[k] = append(idx[k], e)
+	}
+	for l := 0; l < c.L; l++ {
+		pair := func(carry, write uint8, kind uint8) {
+			ce, we := idx[key{int16(l), carry}], idx[key{int16(l), write}]
+			n := len(ce)
+			if len(we) < n {
+				n = len(we)
+			}
+			for i := 0; i < n; i++ {
+				c.face = append(c.face, flowFace{write: we[i], carry: ce[i], layer: int16(l), cell: int32(i), kind: kind})
+			}
+		}
+		pair(ecCarryA, ecWriteA, 0)
+		pair(ecCarryF, ecWriteF, 1)
+	}
 }
 
 // currents is the flow 1-cochain of one token, in the complex's edge order.
@@ -130,6 +179,19 @@ func (c *flowComplex) currents(ls []eval.FlowLayer) ([]float64, error) {
 	put := func(v []float32) {
 		for _, x := range v {
 			f = append(f, float64(x))
+		}
+	}
+	// putSums is the net current into each output cell, the write edge of that cell's face.
+	putSums := func(e []float32, nr, nc int) {
+		for r := 0; r < nr; r++ {
+			var s float64
+			if e != nil && nc > 0 {
+				base := r * nc
+				for col := 0; col < nc && base+col < len(e); col++ {
+					s += float64(e[base+col])
+				}
+			}
+			f = append(f, s)
 		}
 	}
 	for l := 0; l < c.L; l++ {
@@ -155,6 +217,8 @@ func (c *flowComplex) currents(ls []eval.FlowLayer) ([]float64, error) {
 		put(n["H"])
 		put(e["down"])
 		put(n["Dm"])
+		putSums(e["o"], c.c.ND, c.c.NQ)
+		putSums(e["down"], c.c.ND, c.c.NF)
 	}
 	if len(f) != len(c.tail) {
 		return nil, fmt.Errorf("%d currents for %d edges", len(f), len(c.tail))
@@ -281,6 +345,30 @@ func (c *flowComplex) hodge(f []float64, tol float64, maxIt int) (phi, cyc []flo
 	return phi, cyc, it
 }
 
+// circ is d1 f: write minus carry on each face.
+func (c *flowComplex) circ(f []float64) []float64 {
+	o := make([]float64, len(c.face))
+	for i, fc := range c.face {
+		o[i] = f[fc.write] - f[fc.carry]
+	}
+	return o
+}
+
+// harmonic removes face circulation from a divergence-free cochain. On a digon the coexact part is
+// (γ/2, -γ/2) with γ = write - carry, and the harmonic part is the mean of the two edges, which has
+// circulation 0. Edges off a face are already harmonic.
+func (c *flowComplex) harmonic(cyc []float64) []float64 {
+	h := append([]float64(nil), cyc...)
+	for _, fc := range c.face {
+		if fc.write >= len(h) || fc.carry >= len(h) {
+			continue
+		}
+		h[fc.write] = 0.5 * (cyc[fc.write] + cyc[fc.carry])
+		h[fc.carry] = h[fc.write]
+	}
+	return h
+}
+
 // flowReport is what --flow measured over a text.
 type flowReport struct {
 	Tokens       int
@@ -291,8 +379,14 @@ type flowReport struct {
 	Energy       [ecN][3]float64 // per class: |f|^2, |grad|^2, |cycle|^2, summed over tokens
 	Layer        [][3]float64    // per layer: the same
 	Nodes, Edges int
+	Faces        int       // residual digons
+	Harmonic     float64   // |h|^2 summed over tokens
+	Cycle        float64   // |cycle|^2 summed over tokens
+	HarmCirc     float64   // largest |d1 h|
 	Experts      []int     // last token, the layer that fired experts
 	Gates        []float32 // those experts' router weights
+	Signs        []int8    // last token, layer-major: attention sign, feed-forward sign
+	Keeps        []int8    // last token, layer-major: 1 when that write was added
 }
 
 // flowRun feeds text through the model laid out on its cells, writes every token's currents and
@@ -316,7 +410,7 @@ func flowRun(modelPath, outPath, text string) (*flowReport, error) {
 	if err != nil {
 		return nil, err
 	}
-	logf("FLOW  %s (%s): %d nodes, %d edges per token", modelPath, fam, cx.nodes, len(cx.tail))
+	logf("FLOW  %s (%s): %d nodes, %d edges, %d faces per token", modelPath, fam, cx.nodes, len(cx.tail), len(cx.face))
 	W, err := NewSTW(outPath, [][2]string{{"format", "pt"}, {"flow_of", modelPath}, {"text", text}})
 	if err != nil {
 		return nil, err
@@ -329,10 +423,18 @@ func flowRun(modelPath, outPath, text string) (*flowReport, error) {
 	W.AddI32("edge.head", []int{len(hi)}, hi)
 	W.Add("edge.class", "U8", []int{len(cl)}, cl)
 	W.AddI32("edge.layer", []int{len(ly)}, ly)
+	fw, fc, fk, fl := make([]int32, len(cx.face)), make([]int32, len(cx.face)), make([]byte, len(cx.face)), make([]int32, len(cx.face))
+	for i, f := range cx.face {
+		fw[i], fc[i], fk[i], fl[i] = int32(f.write), int32(f.carry), f.kind, int32(f.layer)
+	}
+	W.AddI32("face.write", []int{len(fw)}, fw)
+	W.AddI32("face.carry", []int{len(fc)}, fc)
+	W.Add("face.kind", "U8", []int{len(fk)}, fk)
+	W.AddI32("face.layer", []int{len(fl)}, fl)
 	for k, a := range axes {
 		W.AddI32("cell."+map[axisKind]string{axD: "D", axF: "F", axQ: "Q", axKV: "KV"}[k], []int{a.n}, a.cell)
 	}
-	rep := &flowReport{Family: fam, Layer: make([][3]float64, g.Layers), Nodes: cx.nodes, Edges: len(cx.tail)}
+	rep := &flowReport{Family: fam, Layer: make([][3]float64, g.Layers), Nodes: cx.nodes, Edges: len(cx.tail), Faces: len(cx.face)}
 	var ferr error
 	err = eval.Flow(modelPath, "", text, false, cells, func(pos, tok int, ls []eval.FlowLayer) {
 		if ferr != nil {
@@ -355,6 +457,17 @@ func flowRun(modelPath, outPath, text string) (*flowReport, error) {
 		}
 		phi, cyc, it := cx.hodge(fn, 1e-9, 4000)
 		rep.CGIters = max(rep.CGIters, it)
+		harm := cx.harmonic(cyc)
+		var h2, c2 float64
+		for i := range cyc {
+			h2 += harm[i] * harm[i]
+			c2 += cyc[i] * cyc[i]
+		}
+		rep.Harmonic += h2
+		rep.Cycle += c2
+		for _, g := range cx.circ(harm) {
+			rep.HarmCirc = math.Max(rep.HarmCirc, math.Abs(g))
+		}
 		var dn, cn float64
 		for _, x := range cx.div(fn) {
 			dn += x * x
@@ -395,8 +508,20 @@ func flowRun(modelPath, outPath, text string) (*flowReport, error) {
 				break
 			}
 		}
+		rep.Signs, rep.Keeps = rep.Signs[:0], rep.Keeps[:0]
+		sg, kp, wg := make([]int32, 0, len(ls)*2), make([]int32, 0, len(ls)*2), make([]float32, 0, len(ls)*2)
+		for _, L := range ls {
+			rep.Signs = append(rep.Signs, L.Sign[0], L.Sign[1])
+			rep.Keeps = append(rep.Keeps, L.Keep[0], L.Keep[1])
+			sg = append(sg, int32(L.Sign[0]), int32(L.Sign[1]))
+			kp = append(kp, int32(L.Keep[0]), int32(L.Keep[1]))
+			wg = append(wg, L.Wedge[0], L.Wedge[1])
+		}
+		W.AddI32(fmt.Sprintf("t%d.sign", pos), []int{len(ls), 2}, sg)
+		W.AddI32(fmt.Sprintf("t%d.keep", pos), []int{len(ls), 2}, kp)
+		W.AddF32(fmt.Sprintf("t%d.wedge", pos), []int{len(ls), 2}, wg)
 		rep.Tokens++
-		logf("  token %d (id %d): conservation %.1e, Stokes %.1e, CG %d iterations", pos, tok, conservation(cells, ls), math.Sqrt(cn/math.Max(dn, 1e-300)), it)
+		logf("  token %d (id %d): conservation %.1e, Stokes %.1e, CG %d iterations, %s", pos, tok, conservation(cells, ls), math.Sqrt(cn/math.Max(dn, 1e-300)), it, wedgeLeaf(ls))
 	})
 	if err == nil {
 		err = ferr
@@ -530,7 +655,28 @@ func manifoldLine(family string, pos int, piece string, cells eval.Cells, cx *fl
 		}
 		b += " experts " + strings.Join(parts, " ")
 	}
+	if len(ls) > 0 {
+		b += " wedge " + wedgeLeaf(ls)
+	}
 	return b, nil
+}
+
+func branchWord(sign, keep int8) string {
+	if keep == 1 {
+		return "kept"
+	}
+	if sign < 0 {
+		return "refused-"
+	}
+	return "refused0"
+}
+
+func wedgeLeaf(ls []eval.FlowLayer) string {
+	parts := make([]string, len(ls))
+	for i, L := range ls {
+		parts[i] = fmt.Sprintf("L%d attn %s, ffn %s", i, branchWord(L.Sign[0], L.Keep[0]), branchWord(L.Sign[1], L.Keep[1]))
+	}
+	return strings.Join(parts, "; ")
 }
 
 func logFlow(r *flowReport) {
@@ -538,6 +684,18 @@ func logFlow(r *flowReport) {
 		logf("  family %s", r.Family)
 	}
 	logf("  %d tokens; conservation %.1e, Stokes %.1e, CG <= %d iterations", r.Tokens, r.Conservation, r.Stokes, r.CGIters)
+	share := 0.0
+	if r.Cycle > 0 {
+		share = 100 * r.Harmonic / r.Cycle
+	}
+	logf("  %d faces; harmonic %.1f%% of |cycle|^2, largest face circulation of h %.1e", r.Faces, share, r.HarmCirc)
+	if len(r.Signs) > 0 {
+		leaf := make([]string, 0, len(r.Signs)/2)
+		for i := 0; i+1 < len(r.Signs) && i+1 < len(r.Keeps); i += 2 {
+			leaf = append(leaf, fmt.Sprintf("L%d attn %s, ffn %s", i/2, branchWord(r.Signs[i], r.Keeps[i]), branchWord(r.Signs[i+1], r.Keeps[i+1])))
+		}
+		logf("  last token %s", strings.Join(leaf, "; "))
+	}
 	// The gradient space is d0's range, rank nodes - 1 (connected): isotropic random currents put
 	// that fraction of their energy in it, the reference for how potential-driven a flow is.
 	logf("  random currents on this complex would be %.2f%% gradient (rank d0 / edges = %d / %d)", 100*float64(r.Nodes-1)/float64(r.Edges), r.Nodes-1, r.Edges)

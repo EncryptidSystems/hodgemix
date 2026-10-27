@@ -368,16 +368,19 @@ func (m *model) feed(s *seq, tok, pos int) []float32 {
 		if s.tap != nil {
 			s.tap(li, "in_o", xo)
 		}
+		y := make([]float32, D)
 		if m.arch.Sandwich {
-			y := make([]float32, D)
 			m.lin(li, "o", Lr.o, &act{x: xo}, y, false)
 			yn := m.norm(y, Lr.fn)
 			m.scaleEdge(li, "o", y, yn, m.cells.D, m.cells.ND)
-			for i := range x {
-				x[i] += yn[i]
-			}
+			y = yn
 		} else {
-			m.lin(li, "o", Lr.o, &act{x: xo}, x, true)
+			m.lin(li, "o", Lr.o, &act{x: xo}, y, false)
+		}
+		if m.admitWrite(li, 0, x, y) {
+			for i := range x {
+				x[i] += y[i]
+			}
 		}
 		m.node(li, "Dm", x, m.cells.D, m.cells.ND)
 		if s.tap != nil {
@@ -398,8 +401,10 @@ func (m *model) feed(s *seq, tok, pos int) []float32 {
 			m.scaleEdge(li, "down", z, zn, m.cells.D, m.cells.ND)
 			z = zn
 		}
-		for i := range x {
-			x[i] += z[i]
+		if m.admitWrite(li, 1, x, z) {
+			for i := range x {
+				x[i] += z[i]
+			}
 		}
 		m.node(li, "Dout", x, m.cells.D, m.cells.ND)
 		if s.tap != nil {

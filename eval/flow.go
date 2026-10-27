@@ -29,11 +29,16 @@ type Cells struct {
 // layer), Dm (after the attention write), Dout (after the FFN write), A (attention output, o's input),
 // H (FFN hidden, down's input), and the outputs q, k, v, gate, up. Experts and Gates are the mixture
 // selection on a gpt-oss layer (empty on a dense layer).
+// Wedge is the oriented area of the attention face and the feed-forward face. Sign is that area's
+// branch (-1, 0, +1). Keep is 1 when the forward added that write to the residual.
 type FlowLayer struct {
 	Edge    map[string][]float32
 	Node    map[string][]float32
 	Experts []int
 	Gates   []float32
+	Wedge   [2]float32
+	Sign    [2]int8
+	Keep    [2]int8
 }
 
 type flowLin struct {
