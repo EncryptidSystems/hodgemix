@@ -26,6 +26,8 @@ import (
 	"os"
 	"strconv"
 	"sync"
+
+	"hodgemix/eval"
 )
 
 // MaxLimbs is --limbs; LimbTol is --limb-tol.
@@ -50,12 +52,7 @@ const (
 // (that name also covers earlier Llamas). A Champ file keeps the base rope, so the
 // packed product is detected the same way.
 func llama3Arch(cfg map[string]any) bool {
-	rs, _ := cfg["rope_scaling"].(map[string]any)
-	if rs == nil {
-		return false
-	}
-	t, _ := rs["rope_type"].(string)
-	return t == "llama3"
+	return eval.RopeType(eval.RopeDict(cfg)) == "llama3"
 }
 
 // llama3Budget is the neck pack for a Llama 3 run. An explicit --limbs above Llama3Limbs

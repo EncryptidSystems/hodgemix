@@ -12,42 +12,6 @@ import (
 	"hodgemix/tower"
 )
 
-// copyTowers writes every carried audio, vision, and embedding tensor from the
-// contributors into the output under the same name and the same bytes.
-// bnzmix.* is left to writeTowers. already names are already in the writer.
-// Later models win on a repeated name.
-func copyTowers(models []*ST, W, MW *STW, already map[string]bool) (int, error) {
-	seen := map[string]bool{}
-	for k := range already {
-		seen[k] = true
-	}
-	n := 0
-	for i := len(models) - 1; i >= 0; i-- {
-		st := models[i]
-		for _, k := range st.Keys {
-			if !carriedTensor(k) || seen[k] {
-				continue
-			}
-			b, err := st.Raw(k)
-			if err != nil {
-				return n, err
-			}
-			info := st.H[k]
-			sh := append([]int(nil), info.Shape...)
-			// An encoder's ternary copy is assimilateGemmaTowers'; the merged file keeps its bytes.
-			if !gemmaTowerTensor(k) {
-				W.Add(k, info.Dtype, sh, b)
-			}
-			if MW != nil {
-				MW.Add(k, info.Dtype, append([]int(nil), sh...), b)
-			}
-			seen[k] = true
-			n++
-		}
-	}
-	return n, nil
-}
-
 // writeTowers adds the L-A vision and audio towers and their embedding layers.
 // The projectors are least-squares maps from tower readouts onto base embedding
 // rows (D6), ternarised with the same scale and limb path as the other weights

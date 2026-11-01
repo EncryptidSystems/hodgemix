@@ -78,11 +78,13 @@ func towerTensor(name string) bool {
 		strings.Contains(name, "embed_audio") || strings.Contains(name, "embed_vision")
 }
 
-// carriedTensor is copied into the output under its own name: the audio and
-// vision towers, their embedding projections, the per-layer input embeddings,
-// and a contributor's language-model token embedding. The text mix already
-// writes model.embed_tokens.weight, so that name is not copied again.
-func carriedTensor(name string) bool {
+// asideTensor keeps a tensor out of the text BitLinear mix and out of the output:
+// the audio and vision towers, their embedding projections, the per-layer input
+// embeddings, and a contributor's language-model token embedding. The output's
+// towers are the L-A towers writeTowers builds (bnzmix.vision_tower,
+// bnzmix.audio_tower, bnzmix.embed_vision, bnzmix.embed_audio), so no source
+// tensor is written under its own bytes.
+func asideTensor(name string) bool {
 	if strings.HasPrefix(name, "bnzmix.") || name == "model.embed_tokens.weight" || name == "lm_head.weight" {
 		return false
 	}
@@ -91,13 +93,6 @@ func carriedTensor(name string) bool {
 	}
 	return strings.Contains(name, "embed_tokens") || strings.Contains(name, "per_layer_") ||
 		strings.HasSuffix(name, "layer_scalar") || strings.Contains(name, "post_per_layer_input_norm")
-}
-
-// asideTensor keeps a tensor out of the text BitLinear mix. copyTowers writes
-// the carried ones into the output. The L-A towers are bnzmix.vision_tower,
-// bnzmix.audio_tower, bnzmix.embed_vision and bnzmix.embed_audio.
-func asideTensor(name string) bool {
-	return carriedTensor(name)
 }
 
 // embedKey is the token embedding. Gemma 4 stores it on the language model.
@@ -478,8 +473,7 @@ func main() {
 	limbTol := fs.Float64("limb-tol", LimbTol, "stop adding limbs once the residual is below this fraction of ||W||")
 	ovM := fs.String("ov", "chart", "attention OV circuits: chart = keep the base's v_proj (the head's chart) and carry v's change into o_proj to first order, no dO dV cross term (ovchart.go) | mix {chart|mix}")
 	pinM := fs.String("pin-mean", "on", "keep every mixed BitLinear's response to its mean input (the base forward's) equal to the base's: dW mu = 0 (pinmean.go) {on|off}")
-	repairM := fs.String("repair", "on", "after surgery, set every RMSNorm gain so each channel's spread matches the base's on the calibration tokens (REPAIR; surgery paper step 7 on every channel; repair.go) {on|off}")
-	repairP := fs.Int("repair-passes", RepairPasses, "fixed-point passes of --repair (each is one forward of the output over the calibration tokens)")
+	repairM := fs.String("repair", "on", "after surgery, set every RMSNorm gain so each channel's spread matches the base's on the calibration tokens (REPAIR; surgery paper step 7 on every channel; repair.go). Passes run until the mean |log2| spread is under the stop in repair.go, short of a ratio of 1 {on|off}")
 	surg := fs.String("surgery", "on", "after the mix, put the base's codes back on the singular set of its forward: massive residual channels and the FFN spike units that write them (surgery.go; needs the 2B4T-shape reference forward) {on|off}")
 	surgRatio := fs.Float64("surgery-ratio", SurgeryRatio, "a residual channel / FFN unit is singular at this many times the median's rms / peak")
 	bisectOn := fs.Bool("bisect", false, "mix each of --roles alone (every other tensor stays the base's), score each against the base with the reference forward, print role -> ppl; outputs are deleted, the table is kept in OUT.bisect.json")
@@ -510,7 +504,7 @@ func main() {
 	AttnOn = *attn == "on"
 	SurgeryOn, SurgeryRatio = *surg == "on", *surgRatio
 	PinMean = *pinM == "on"
-	RepairOn, RepairPasses = *repairM == "on", *repairP
+	RepairOn = *repairM == "on"
 	if *limbsN < 1 {
 		die("--limbs must be at least 1")
 	}
@@ -1267,13 +1261,17 @@ func run(c runCfg, basePath string, srcArgs []string, out, outTern, outMerged st
 		outerSet(float64(isyn))
 	}
 	endOuter()
-	carried, err := copyTowers(all, W, MW, nil)
-	if err != nil {
-		die("towers: %v", err)
+	aside := 0
+	for _, st := range all {
+		for _, k := range st.Keys {
+			if asideTensor(k) {
+				aside++
+			}
+		}
 	}
-	if carried > 0 {
-		logf("TOWERS  carried %d audio/vision tensors into the output", carried)
-		report["towers_carried"] = carried
+	if aside > 0 {
+		logf("TOWERS  %d encoder and per-layer tensors of the inputs are not written; the output's towers are the L-A towers", aside)
+		report["not_written"] = aside
 	}
 	tw, err := writeTowers(W, baseST, basePath)
 	if err != nil {
@@ -1281,30 +1279,6 @@ func run(c runCfg, basePath string, srcArgs []string, out, outTern, outMerged st
 	}
 	if tw != nil {
 		report["towers"] = tw
-	}
-	// Gemma 4 encoders: ternarised into the output, and the bridge from their 1536-wide
-	// axis onto D (assimtowers.go). Later sources win on a repeated name, as copyTowers.
-	encSeen := map[string]bool{}
-	for i := len(all) - 1; i >= 0; i-- {
-		st := all[i]
-		if st == baseST {
-			continue
-		}
-		enc, err := assimilateGemmaTowers(W, st, encSeen)
-		if err != nil {
-			die("encoders: %v", err)
-		}
-		if enc == nil {
-			continue
-		}
-		report["encoders"] = enc
-		if _, done := report["embed_bridge"]; !done && st.Has("model.language_model.embed_tokens.weight") {
-			br, err := writeBridge(W, baseST, eval.FilesOf(basePath).Tokenizer, st, "model.language_model.embed_tokens.weight", eval.FilesOf(st.Path).Tokenizer)
-			if err != nil {
-				die("bridge: %v", err)
-			}
-			report["embed_bridge"] = br
-		}
 	}
 	var ent []int32
 	for _, e := range E {
@@ -1409,7 +1383,7 @@ func run(c runCfg, basePath string, srcArgs []string, out, outTern, outMerged st
 		report["surgery"] = rep
 	}
 	if RepairOn && baseOnly {
-		logf("REPAIR  per-channel statistics back to the base's with the BF16 gains (repair.go), %d passes", RepairPasses)
+		logf("REPAIR  per-channel statistics back to the base's with the BF16 gains (repair.go), until mean |log2| spread is under %.3g", repairStop)
 		rr, err := repair(basePath, outTern, eval.FilesOf(basePath).Tokenizer)
 		if err != nil {
 			die("repair: %v", err)

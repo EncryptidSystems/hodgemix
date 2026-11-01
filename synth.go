@@ -6,6 +6,8 @@ import (
 	"math/cmplx"
 	"os"
 	"time"
+
+	"hodgemix/train"
 )
 
 type Entry struct {
@@ -91,8 +93,7 @@ func synth(ents []Entry, G [2]int, sp SynthParams) ([]float64, SynthRec) {
 			for i := range jobs {
 				g := ents[i].Grid
 				if i != bi && SeedAlign {
-					g2, sh := seedShift(g, ref, dims, 0)
-					g3, pr, pc := seedAssign(g2, ref, G)
+					g3, sh, pr, pc := placeSource(g, ref, dims, G)
 					grids[i], rec.Shifts[i], rec.PermR[i], rec.PermC[i] = g3, sh, pr, pc
 				} else {
 					grids[i], rec.Shifts[i] = g, make([]int, len(dims))
@@ -126,8 +127,8 @@ func synth(ents []Entry, G [2]int, sp SynthParams) ([]float64, SynthRec) {
 		rec.Energy = append(rec.Energy, p.Energy)
 		rec.RecErr = math.Max(rec.RecErr, p.RecErr)
 	}
-	logf("      seed (phase-corr per digit + %s assignment) + spectral Hodge for %d contributors: %.2fs; harmonic bins=%d of %d, max|M^-(g+c+h)|=%.1e",
-		"Re-Basin weight-matching", len(ents), time.Since(t0).Seconds(), nh, n, rec.RecErr)
+	logf("      seed (phase-corr per digit + gap selection) + spectral Hodge for %d contributors: %.2fs; harmonic bins=%d of %d, max|M^-(g+c+h)|=%.1e",
+		len(ents), time.Since(t0).Seconds(), nh, n, rec.RecErr)
 	ws := make([]float64, len(ents))
 	var wsum float64
 	for i, e := range ents {
@@ -183,7 +184,7 @@ func synth(ents []Entry, G [2]int, sp SynthParams) ([]float64, SynthRec) {
 		if len(modes) == 0 {
 			logf("      no low/harmonic bins on grid %v: no Kuramoto lock", G)
 		}
-		return out, rec
+		return flowGrid(out, ref, G), rec
 	}
 	allm := append([]int{bi}, others...)
 	type osc struct{ i, m int }
@@ -194,25 +195,6 @@ func synth(ents []Entry, G [2]int, sp SynthParams) ([]float64, SynthRec) {
 		}
 	}
 	no := len(oscs)
-	level := make([]int, no)
-	for k, o := range oscs {
-		level[k] = S.Level[o.m]
-	}
-	// Eq.(15): c_ij = 1 within an MRH bucket or digit level, 2^-4 across
-	Cm := make([]float64, no*no)
-	for a := 0; a < no; a++ {
-		for b := 0; b < no; b++ {
-			if a == b {
-				continue
-			}
-			c := sp.K.Weak
-			if ents[oscs[a].i].Bucket == ents[oscs[b].i].Bucket || level[a] == level[b] {
-				c = 1
-			}
-			Cm[a*no+b] = c
-		}
-	}
-	Kb := couplingMatrix(Cm, no, sp.K.GTheta)
 	bidx := map[int]int{}
 	for k, o := range oscs {
 		if o.i == bi {
@@ -240,7 +222,7 @@ func synth(ents []Entry, G [2]int, sp SynthParams) ([]float64, SynthRec) {
 				theta[k] = cmplx.Phase(parts[o.i].F[o.m]) - cmplx.Phase(Href[o.m])
 			}
 		}
-		kr := kuramotoTick(theta, Kb, level, refOf, kp, fmt.Sprintf("kuramoto pass %d", ps+1))
+		kr := gapLock(theta, refOf, kp.WLock)
 		// Eq.(19) merge: phases read in the base oscillator's frame; only the base's lock cluster merges;
 		// per-mode order parameter r_m sets the mixing weight; unlocked modes stay with the base.
 		Hn := append([]complex128(nil), Href...)
@@ -319,7 +301,35 @@ func synth(ents []Entry, G [2]int, sp SynthParams) ([]float64, SynthRec) {
 		rec.R = append(rec.R, p.R)
 	}
 	rec.DFT = fftn(toC(hg), dims, false)
-	return out, rec
+	return flowGrid(out, ref, G), rec
+}
+
+// gapLock is the lock certificate. A phase is locked when it already lies in
+// the window. The Ricci step afterwards is the update; phases are not integrated.
+func gapLock(theta []float64, refOf []int, wLock float64) KResult {
+	n := len(theta)
+	res := KResult{Theta: theta, Labels: make([]int, n), Locked: make([]bool, n), DPhase: make([]float64, n), Steps: 1, Converged: true, Windows: 1}
+	var z complex128
+	for i := range theta {
+		d := wrap(theta[i] - theta[refOf[i]])
+		res.DPhase[i] = d
+		res.Locked[i] = math.Abs(d) <= wLock
+		z += cmplx.Exp(complex(0, theta[i]))
+	}
+	res.R = cmplx.Abs(z) / float64(max(1, n))
+	return res
+}
+
+// flowGrid is one Ricci–DeTurck step of the residual toward the base.
+func flowGrid(out, ref []float64, G [2]int) []float64 {
+	if len(out) != G[0]*G[1] || len(out) != len(ref) {
+		return out
+	}
+	g, neck := train.Flow(out, ref, G[0], G[1])
+	if neck > 0 {
+		logf("      train: one Ricci–DeTurck step, neck sites capped=%d", neck)
+	}
+	return g
 }
 
 // Paper: no equation (helper: I/O, progress or utility)

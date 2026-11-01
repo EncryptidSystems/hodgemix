@@ -12,6 +12,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"hodgemix/eval"
 )
 
 // bnz4Prefix returns the 12-byte header + JSON index, the bytes bnz-loader verifies the Ed25519 signature over.
@@ -133,7 +135,7 @@ func champCheck(stPath, cfgPath string) (bad, notes []string) {
 	}
 	bad = append(bad, champChanMaps(st)...)
 	// Champ is a legacy consumer. The check that remains is the BitNet shape
-	// above. Audio, vision, and embedding tensors stay in the file.
+	// above. Any other model tensor in the file is counted in a note.
 	extra := 0
 	for n := range st.H {
 		if _, ok := want[n]; ok || strings.HasPrefix(n, "bnzmix.") || isLimbTensor(n) {
@@ -190,13 +192,6 @@ func champRuntime(cfg map[string]any, D, F, H, KV, hd int) []string {
 	}
 	// hidden_activation (VaultGemma, Gemma) selects norm.wgsl GEMMA, y*(1+w), and
 	// embed.wgsl SCALE = sqrt(hidden). query_pre_attn_scalar is attention.wgsl DENOM.
-	// A quantization_config the source already has must be the packed ternary marker.
-	// Inventing one is not what makes the file packed; the weights are.
-	if q, ok := cfg["quantization_config"].(map[string]any); ok && q != nil {
-		if str(q, "quant_method") != hodgeQuant || str(q, "linear_class") != hodgeLinear || str(q, "quantization_mode") != "offline" {
-			bad = append(bad, "config.json: quantization_config must be "+hodgeQuant+" / "+hodgeLinear+" / offline (packed weights)")
-		}
-	}
 	if _, ok := cfg["max_position_embeddings"].(float64); !ok {
 		bad = append(bad, "config.json: missing max_position_embeddings (the runtime's context bound)")
 	}
@@ -209,12 +204,9 @@ func champRuntime(cfg map[string]any, D, F, H, KV, hd int) []string {
 	if D%4 != 0 || F%4 != 0 {
 		bad = append(bad, fmt.Sprintf("hidden %d / intermediate %d must be multiples of 4 (int8 words)", D, F))
 	}
-	if rs, ok := cfg["rope_scaling"].(map[string]any); ok && rs != nil {
-		t := str(rs, "rope_type")
-		if t == "" {
-			t = str(rs, "type")
-		}
-		if t != "" && t != "default" && t != "linear" && t != "llama3" {
+	if rs := eval.RopeDict(cfg); rs != nil {
+		t := eval.RopeType(rs)
+		if t != "" && t != "default" && t != "linear" && t != "llama3" && t != "mrope" {
 			bad = append(bad, fmt.Sprintf("config.json: rope_scaling %q: rope.wgsl runs linear and llama3", t))
 		}
 	}
@@ -343,4 +335,33 @@ func champChanMaps(st *ST) []string {
 		}
 	}
 	return bad
+}
+
+// promoteRope copies rope_parameters into rope_scaling when that is the only place the
+// checkpoint wrote it, so Champ's rope.wgsl (which reads rope_scaling) sees llama3 or linear.
+// mrope stays the default frequencies; the section list is kept on the copied block.
+func promoteRope(cfg map[string]any) string {
+	if rs, ok := cfg["rope_scaling"].(map[string]any); ok && len(rs) > 0 {
+		return ""
+	}
+	src := eval.RopeDict(cfg)
+	if src == nil {
+		return ""
+	}
+	out := map[string]any{}
+	for k, v := range src {
+		out[k] = v
+	}
+	t := eval.RopeType(src)
+	switch t {
+	case "", "mrope":
+		out["rope_type"] = "default"
+	default:
+		out["rope_type"] = t
+	}
+	cfg["rope_scaling"] = out
+	if t == "" {
+		t = "default"
+	}
+	return "rope_scaling from rope_parameters (" + t + ")"
 }

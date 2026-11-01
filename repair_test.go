@@ -5,12 +5,12 @@ import (
 	"testing"
 )
 
-// Three repair passes on a subnorm the base does not have walk a unit gain to 1/8.
-// The base tap is the raw sublayer; the output tap is an RMSNorm. The ratio is not a
-// shared gain, and repair must leave the inserted gain at 1.
+// Three successive clamps of one binade walk a unit gain to 1/8. The base tap is the
+// raw sublayer; the output tap is an RMSNorm. The ratio is not a shared gain, and
+// repair must leave the inserted gain at 1. The repair loop itself has no pass count.
 func TestRepairLeavesInsertedSubnorm(t *testing.T) {
 	g := 1.0
-	for i := 0; i < RepairPasses; i++ {
+	for i := 0; i < 3; i++ {
 		g *= repairRatio(0.02, 1)
 	}
 	if math.Abs(g-0.125) > 1e-12 {

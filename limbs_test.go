@@ -13,8 +13,9 @@ func TestLlama3NeckBudget(t *testing.T) {
 	llama := map[string]any{"model_type": "llama", "rope_scaling": map[string]any{"rope_type": "llama3"}}
 	bitnet := map[string]any{"model_type": "bitnet"}
 	champ := map[string]any{"model_type": "bitnet", "rope_scaling": map[string]any{"rope_type": "llama3", "factor": 32.0}}
-	if !llama3Arch(llama) || llama3Arch(bitnet) || !llama3Arch(champ) {
-		t.Fatalf("llama3 %v bitnet %v champ %v", llama3Arch(llama), llama3Arch(bitnet), llama3Arch(champ))
+	moved := map[string]any{"model_type": "llama", "rope_parameters": map[string]any{"rope_type": "llama3", "factor": 32.0}}
+	if !llama3Arch(llama) || llama3Arch(bitnet) || !llama3Arch(champ) || !llama3Arch(moved) {
+		t.Fatalf("llama3 %v bitnet %v champ %v moved %v", llama3Arch(llama), llama3Arch(bitnet), llama3Arch(champ), llama3Arch(moved))
 	}
 	n, tol := llama3Budget(1, 0.15)
 	if n != Llama3Limbs || tol != Llama3Tol {

@@ -13,7 +13,7 @@
 | (10) | Whitney P0 spline / de Rham sample, hat weights | `splineGrid`,`sampleGrid` (math.go), `hatWeights` (chanmap.go) | T7 |
 | (11) | depth hat | `depthHat` (main.go) | tiny runs (contributor counts) |
 | (12) | phase correlation per digit | `seedShift` (math.go) | `seed phase-correlation` |
-| (13) | Re-Basin weight matching | `seedAssign`,`hungarian` | `seed assignment` |
+| (13) | gap selection (Lemma 4.1) | `seedAssign`,`train.Align` | `seed assignment` |
 | (14),(14b),(15) | Kuramoto tick, ω=0, K = 2^-4 c/d_max | `kuramotoTick`,`couplingMatrix` (kuramoto.go); coupling build in `synth` | T5 |
 | (16) | lock window 1/16 turn, N_lost | `kuramotoTick` | T5 |
 | (17) | r, r_m | `kuramotoTick` (rOf), `synth` merge | T5, tiny runs |

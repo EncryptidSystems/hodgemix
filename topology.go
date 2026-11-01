@@ -829,6 +829,9 @@ func configFor(t modelMeta, cfgPath, basePath string, vocab int) (b []byte, chan
 	if err := json.Unmarshal(b, &cfg); err != nil {
 		return nil, nil, fmt.Errorf("%s: %v", src, err)
 	}
+	if note := promoteRope(cfg); note != "" {
+		changed = append(changed, note)
+	}
 	mt, _ := cfg["model_type"].(string)
 	// Gemma, including VaultGemma, names the activation hidden_activation. Champ reads
 	// hidden_act. Copy before the class default, or a VaultGemma run is stamped silu.

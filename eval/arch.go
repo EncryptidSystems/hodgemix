@@ -52,7 +52,7 @@ func Classify(cfg map[string]any, layers int) (Arch, error) {
 		a.Family = Fam2B4T
 	case "", "llama":
 		a.Family = FamLlama
-	case "qwen", "qwen2", "qwen3":
+	case "qwen", "qwen2", "qwen3", "qwen2_vl", "qwen2_5_vl", "qwen2_5_vl_text", "qwen3_vl", "qwen3_vl_text":
 		a.Family = FamQwen
 	case "gemma", "gemma2", "gemma3", "gemma3_text", "vaultgemma":
 		a.Family = FamGemma
@@ -243,24 +243,80 @@ func windows(cfg map[string]any, layers int, family string) ([]int, error) {
 	return out, nil
 }
 
+// RopeDict is the rotary block. Checkpoints put it in rope_scaling, or, after a recent
+// transformers save, only in rope_parameters. A nested rope_parameters (one map per layer
+// type) prefers the llama3 entry.
+func RopeDict(cfg map[string]any) map[string]any {
+	if cfg == nil {
+		return nil
+	}
+	if rs, ok := cfg["rope_scaling"].(map[string]any); ok && len(rs) > 0 {
+		return rs
+	}
+	rs, ok := cfg["rope_parameters"].(map[string]any)
+	if !ok || len(rs) == 0 {
+		return nil
+	}
+	if _, ok := rs["rope_type"].(string); ok {
+		return rs
+	}
+	if _, ok := rs["type"].(string); ok {
+		return rs
+	}
+	if _, ok := rs["mrope_section"]; ok {
+		return rs
+	}
+	var first map[string]any
+	for _, v := range rs {
+		child, ok := v.(map[string]any)
+		if !ok {
+			continue
+		}
+		if first == nil {
+			first = child
+		}
+		if RopeType(child) == "llama3" {
+			return child
+		}
+	}
+	return first
+}
+
+// RopeType is rope_type, otherwise type. "mrope" is Qwen's multimodal layout on the default
+// frequencies: text positions are the ordinary 1D rope.
+func RopeType(rs map[string]any) string {
+	if rs == nil {
+		return ""
+	}
+	if t, _ := rs["rope_type"].(string); t != "" {
+		return t
+	}
+	t, _ := rs["type"].(string)
+	return t
+}
+
 // ropeFreqs is the rotary inverse frequencies and the extra magnitude YaRN applies to the
 // rotated queries and keys (1 for every other scaling).
 func ropeFreqs(cfg map[string]any, theta float64, hd int) ([]float64, float64, error) {
 	if p, ok := cfg["partial_rotary_factor"].(float64); ok && p != 1 {
 		return nil, 0, fmt.Errorf("partial_rotary_factor %g is not modelled", p)
 	}
+	if rs := RopeDict(cfg); rs != nil {
+		if _, ok := cfg["rope_theta"].(float64); !ok {
+			if v, ok := rs["rope_theta"].(float64); ok && v > 0 {
+				theta = v
+			}
+		}
+	}
 	f := make([]float64, hd/2)
 	for i := range f {
 		f[i] = math.Pow(theta, -2*float64(i)/float64(hd))
 	}
-	rs, _ := cfg["rope_scaling"].(map[string]any)
+	rs := RopeDict(cfg)
 	if rs == nil {
 		return f, 1, nil
 	}
-	typ, _ := rs["rope_type"].(string)
-	if typ == "" {
-		typ, _ = rs["type"].(string)
-	}
+	typ := RopeType(rs)
 	numf := func(k string, d float64) float64 {
 		if v, ok := rs[k].(float64); ok {
 			return v
@@ -268,7 +324,9 @@ func ropeFreqs(cfg map[string]any, theta float64, hd int) ([]float64, float64, e
 		return d
 	}
 	switch typ {
-	case "", "default":
+	case "", "default", "mrope":
+		// mrope_section splits the same frequencies across time, height and width.
+		// A text token uses one position on all three, which is this 1D rope.
 	case "dynamic":
 	case "linear":
 		fac := numf("factor", 1)

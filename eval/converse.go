@@ -36,11 +36,17 @@ func Converse(modelPath, tokPath string, n int) ([][]Turn, error) {
 	if err != nil {
 		return nil, err
 	}
-	eot, hasEot := tk.special[tk.eot]
-	if !hasEot {
+	if tk.eot == "" && tk.format() == fmtPlain {
 		return nil, fmt.Errorf("%s: no turn-end token (set the tokenizer_config whose eos_token ends a turn)", tokPath)
 	}
-	sys := tk.encodeChat("System: " + ChatSystem + tk.eot)
+	sysText := tk.chatSystem()
+	pre := tk.systemPrefix(sysText)
+	var sys []int
+	if pre == "" {
+		sys = append([]int(nil), tk.bos...)
+	} else {
+		sys = tk.encodeChat(pre)
+	}
 	root := &seq{}
 	for i, id := range sys {
 		m.feed(root, id, i)
@@ -54,8 +60,12 @@ func Converse(modelPath, tokPath string, n int) ([][]Turn, error) {
 		}
 		pos := len(sys)
 		var turns []Turn
-		for _, u := range conv {
-			ids := tk.chatPieces("User: " + u + tk.eot + "Assistant: ") // no second BOS
+		for i, u := range conv {
+			turnSys := ""
+			if i == 0 && pre == "" {
+				turnSys = sysText
+			}
+			ids := tk.chatPieces(tk.promptTurn(turnSys, u)) // no second BOS
 			var lg []float32
 			for k, id := range ids {
 				if k < len(ids)-1 {
@@ -69,15 +79,26 @@ func Converse(modelPath, tokPath string, n int) ([][]Turn, error) {
 			ended := false
 			for j := 0; j < n && !ended; j++ {
 				nx := argmax(lg)
+				if ended = tk.ended(nx); ended {
+					m.feed(s, nx, pos)
+					pos++
+					if tail := tk.afterStop(); tail != "" {
+						for _, id := range tk.chatPieces(tail) {
+							m.feed(s, id, pos)
+							pos++
+						}
+					}
+					break
+				}
+				sb.WriteString(tk.decode(nx))
 				lg = m.step(s, nx, pos)
 				pos++
-				if ended = nx == eot; !ended {
-					sb.WriteString(tk.decode(nx))
-				}
 			}
 			if !ended { // a reply cut at n tokens still closes its turn
-				m.feed(s, eot, pos)
-				pos++
+				for _, id := range tk.chatPieces(tk.closeTurn()) {
+					m.feed(s, id, pos)
+					pos++
+				}
 			}
 			turns = append(turns, Turn{u, strings.TrimSpace(sb.String())})
 		}

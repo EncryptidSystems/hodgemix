@@ -15,9 +15,9 @@ package main
 // base that has neither. The base's tap there is the raw sublayer, so the ratio is not a correction
 // of a shared gain: three clamps walk the inserted gain 1 → 1/2 → 1/4 → 1/8 and every later layer
 // scales both residual branches by 1/8. Those gains stay at 1. The output scales linearly with g_c,
-// so one pass fixes each shared norm given its input; fixing early layers moves later inputs, so the
-// pass is iterated to a fixed point (RepairPasses), stopping once the measured spread is below
-// repairStop (in the 0.1s), so a converged pass is not followed by one that overshoots. Ternary codes and weight_scales are untouched;
+// so one pass fixes each shared norm given its input; fixing early layers moves later inputs, so
+// passes continue until the measured spread is below repairStop. That stop is in the 0.1s, short of
+// a ratio of 1, and a pass already under it writes nothing. Ternary codes and weight_scales are untouched;
 // gains are written in place. Forward passes only, no training.
 // No paper equation.
 
@@ -32,13 +32,11 @@ import (
 	"hodgemix/eval"
 )
 
-// RepairOn is --repair; RepairPasses is --repair-passes.
-var (
-	RepairOn     = true
-	RepairPasses = 3
-)
+// RepairOn is --repair.
+var RepairOn = true
 
-// repairStop: a pass that measures the spread below this (in the 0.1s) ends the repair.
+// repairStop: a pass whose mean |log2| channel spread is below this ends the repair.
+// 0.2 is still in the tenths, short of a ratio of 1, so the last small correction is not written.
 const repairStop = 0.2
 
 func normTensor(base *ST, key string) string {
@@ -107,7 +105,7 @@ func repair(basePath, outTern, tok string) (*repairReport, error) {
 	}
 	sort.Strings(keys)
 	var skipped []string
-	for pass := 0; pass < RepairPasses; pass++ {
+	for pass := 0; ; pass++ {
 		cur, _, err := eval.NormStats(outTern, tok)
 		if err != nil {
 			return rep, err

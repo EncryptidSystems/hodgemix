@@ -1,6 +1,6 @@
 # hodgemix
 
-hodgemix builds one ternary model from a base checkpoint and one or more open-weight contributors. The mix is Hodge–Kuramoto alignment in weight space: seed alignment, a Hodge split, ternary TIES on the curl, and a selective DTFT lock on the harmonic part. There is no loss, no backward pass, and no training step.
+hodgemix builds one ternary model from a base checkpoint and one or more open-weight contributors. The mix is Hodge–Kuramoto alignment in weight space: seed alignment, a Hodge split, ternary TIES on the curl, and a selective DTFT lock on the harmonic part. There is no loss and no backward pass. The training step is one closed-form update, described below.
 
 The output is a BitNet b1.58 layout in BNZ4, the container [Champ](https://ai.encryptid.systems) and bnz-loader read. Audio and vision towers on a contributor are carried into that file. They are not folded into the text mix.
 
@@ -109,7 +109,7 @@ Every constant comes from `paper_v2` Appendix A unless a flag overrides it (`par
 | `--vocab` | `union` | Base token ids stay. Other contributor tokens are appended. `base` keeps the base vocabulary. |
 | `--attn` | `on` | Fold QK-norm, marry RoPE frequencies, match logit temperature to the base. |
 | `--ov` | `chart` | Keep the base V and carry its change into O. `mix` mixes both factors. |
-| `--seed-align` | `auto` (`on`) | Phase-correlation shift, then Re-Basin assignment, per tensor. |
+| `--seed-align` | `auto` (`on`) | Phase-correlation shift, then the gap rule, per tensor. A fibre is copied only when the base fibres are separated by more than √2(1+√n) times the transport and the neighbour is unique. Otherwise the slot stays the base value. |
 | `--pin-mean` | `on` | A mixed matrix keeps the base response on the base forward's mean input. |
 | `--surgery` | `on` | Base codes return on the singular set of the base forward. |
 | `--repair` | `on` | RMSNorm gains so each channel's spread matches the base on the calibration tokens. |
@@ -123,9 +123,9 @@ A run stops when a step cannot do what it describes. Preflight checks configs ag
 
 ## Audio and vision
 
-A contributor that nests its text stack under `model.language_model` (Gemma 4) still has its audio tower and vision tower in the file. Those tensors, their embedding projections, and the per-layer input embeddings are copied into the output under the same names. They are not text BitLinear roles.
+A contributor that nests its text stack under `model.language_model` (Gemma 4) also has an audio tower and a vision tower in the file. Those tensors, their embedding projections, the per-layer input embeddings, and the contributor's own token embedding stay out of the text mix and are not written to the output. The run logs how many, and the report records the count as `not_written`.
 
-The mix also writes least-squares tower readouts as `bnzmix.vision_tower`, `bnzmix.audio_tower`, `bnzmix.embed_vision`, and `bnzmix.embed_audio`. The text mix still writes `model.embed_tokens.weight`. Dropping a named tower is a scope cut and has to be stated. It is not a default.
+The output's towers are the L-A towers of `transfractal_tensor.tex` (decisions D1–D24): a closed-form operator and least-squares projectors onto the base's residual axis, ternarised with limbs, stored as `bnzmix.vision_tower`, `bnzmix.audio_tower`, `bnzmix.embed_vision`, and `bnzmix.embed_audio`. The text mix still writes `model.embed_tokens.weight`. No source tensor is written under its own bytes, and `stdiff` checks that.
 
 ## Probes
 
@@ -155,7 +155,7 @@ The mix also writes least-squares tower readouts as `bnzmix.vision_tower`, `bnzm
 spm2json -model tokenizer.model -config tokenizer_config.json -out tokenizer.json
 ```
 
-`stdiff` compares two safetensors files tensor by tensor, including packed ternary codes:
+`stdiff` compares two safetensors files tensor by tensor, including packed ternary codes. It also finds every tensor of the second file whose bytes equal a tensor of the first, under any name:
 
 ```
 stdiff -a BASE.safetensors -b OUT.safetensors -json report.json
@@ -169,9 +169,19 @@ These are runs already made. They are not a promise about a new pair of checkpoi
 - 2B4T + Qwen3-0.6B at 1:1, base topology: the curl-set TIES mean used to ignore `--base-weight` and replace the base's curl set (perplexity 7.6×10^7). Counting every contributor's weight, then seed alignment, surgery, pin-mean, and the OV chart, brought that run to perplexity 14.4. The OV cross term was 0.23 of the base circuit norm.
 - The same pair with `--limbs 2` scored perplexity 4142. Stock 2B4T moved entirely into a radix-4 limb still scores 12.0, so the limb arithmetic is exact and the extra limb was keeping a residual the shared-vocabulary map does not align. The default stays one body limb.
 - `stdiff` of hodge-2b4t-1 against Microsoft's 2B4T: 542 of 542 tensors byte-identical, 0 of 2,084,044,800 codes changed, plus the `bnzmix` channel-map tensors.
-- Hodge-3.5 (`hodge-vaultgemma-1`) assimilates VaultGemma into the 2B4T width. Hodge-4 assimilates Gemma 4 into Hodge-3.5 and keeps the audio and vision towers. Its reported perplexity is 1.06× Hodge-3.5. `stdiff` against the source checkpoints found no byte-identical tensor in either pair.
+- Hodge-3.5 (`hodge-vaultgemma-1`) assimilates VaultGemma into the 2B4T width. Hodge-4 assimilates Gemma 4 into Hodge-3.5 and keeps the audio and vision towers. Its reported perplexity is 1.06× Hodge-3.5. Against the Gemma 4 checkpoint, the text-only output and the output with the L-A towers (`hodge-4.la`) hold no Gemma 4 tensor, apart from 31 one-element values equal under other names. An earlier output that also carried Gemma 4's own encoders (`hodge-4.av`) held 1,162 Gemma 4 tensors unchanged under their own names, 30.5 MiB of a 3.85 GB file. That encoder path is removed.
 
 Channel matching is still per tensor. A source row is not tied to the base row it adds into. That limit is `GAPS.md` item 18.
+
+## Training step
+
+`train/` is the update. It is applied inside the mix. Nothing in it searches.
+
+- **Selection.** `train.Align` is Lemma 4.1 of the lattice Riemann–Hilbert note. Certified fibres are copied. Uncertified fibres are the cone centre, the base value (Theorem 8.2 at ρ = 0). The stored row and column maps stay bijections so the channel-map chunk still checks.
+- **Lock.** A mode is locked when its measured phase is already inside the 1/16-turn window. Phases are not integrated.
+- **One Ricci–DeTurck step.** `train.Flow` moves the residual by ∂t f = Δf − c_H Ω² f with time step 1/8. c_H = 2 − 4/ρ² and Ω = 2ρ/(ρ²+|x|²), ρ = 531/40, from the lattice Hardy inequality. A site whose discrete Laplacian reaches the cylinder scale 6/ρ² is capped to the base. The step runs once.
+
+`train.Train` is selection followed by that step, for a grid that is not going through the Hodge split.
 
 ## Neuromorphic event path
 

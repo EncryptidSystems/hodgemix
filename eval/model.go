@@ -358,6 +358,13 @@ func load(path string) (*model, error) {
 	}
 	if v, ok := cfg["rope_theta"].(float64); ok {
 		m.Theta = v
+	} else if rs := RopeDict(cfg); rs != nil {
+		if v, ok := rs["rope_theta"].(float64); ok && v > 0 {
+			m.Theta = v
+		}
+	}
+	if _, ok := cfg["image_token_id"].(float64); ok {
+		m.imageSys = ImageSystem
 	}
 	if v, ok := cfg["rms_norm_eps"].(float64); ok {
 		m.Eps = v

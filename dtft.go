@@ -613,11 +613,10 @@ func synthD(ents []Entry, G [2]int, sp SynthParams) ([]float64, SynthRec) {
 	ref := ents[bi].Grid
 	grids := make([][]float64, len(ents))
 	// Step 1: seed as paper_v2 (Eq.12-13)
-	setInner("seed (phase corr + Re-Basin)", float64(len(ents)), "")
+	setInner("seed (phase corr + gap selection)", float64(len(ents)), "")
 	for i := range ents {
 		if i != bi && SeedAlign {
-			g2, sh := seedShift(ents[i].Grid, ref, dims, 0)
-			g3, pr, pc := seedAssign(g2, ref, G)
+			g3, sh, pr, pc := placeSource(ents[i].Grid, ref, dims, G)
 			grids[i], rec.Shifts[i], rec.PermR[i], rec.PermC[i] = g3, sh, pr, pc
 		} else {
 			grids[i], rec.Shifts[i] = ents[i].Grid, make([]int, len(dims))
@@ -763,13 +762,14 @@ func synthD(ents []Entry, G [2]int, sp SynthParams) ([]float64, SynthRec) {
 	}
 	if A < 0 || len(bandA) == 0 || len(others) == 0 {
 		if len(others) > 0 && (A < 0 || len(bandA) == 0) {
-			out = append([]float64(nil), ref...)
-			logf("      [D] no band to lock: curl stays with the base")
+			logf("      [D] no band to lock: curl residual kept for the Ricci–DeTurck step")
+		} else {
+			logf("      [D] no band (no digit with r>=3 on grid %v, Prop.2b beta1=0) or no sources: band stays with base, no lock", G)
 		}
-		logf("      [D] no band (no digit with r>=3 on grid %v, Prop.2b beta1=0) or no sources: band stays with base, no lock", G)
 		rec.R = []float64{1}
 		D.Secs = time.Since(t0).Seconds()
 		rec.Passes = append(rec.Passes, PassRec{NModes: 0})
+		out = flowGrid(out, ref, G)
 		rec.DFT = fftn(toC(out), dims, false)
 		return out, rec
 	}
@@ -869,49 +869,17 @@ func synthD(ents []Entry, G [2]int, sp SynthParams) ([]float64, SynthRec) {
 	} else {
 		D.KoverKc = math.Inf(1)
 	}
-	// Step 5: KTE ticks with paper_v2 Eq.(15) coupling (strong within bucket/level, weak across), d_max-normalized
-	level := make([]int, no)
+	// Step 5: the lock is the 1/16-turn window on the phase already measured.
+	// A sheet outside the window is not dragged in by a tick loop.
+	clear := make([]bool, no)
 	for a := range allm {
-		for m, b := range bandA {
-			lv := 0
-			d := digitsOf(b, radA)
-			for j, x := range d {
-				if x != 0 {
-					lv = j
-				}
-			}
-			level[a*nm+m] = lv
+		for m := 0; m < nm; m++ {
+			k := a*nm + m
+			clear[k] = math.Abs(lift(theta[k]-theta[m])) <= 1.0/16
 		}
 	}
-	Cm := make([]float64, no*no)
-	for x := 0; x < no; x++ {
-		for y := 0; y < no; y++ {
-			if x == y {
-				continue
-			}
-			c := sp.K.Weak
-			if ents[allm[x/nm]].Bucket == ents[allm[y/nm]].Bucket || level[x] == level[y] {
-				c = 1
-			}
-			Cm[x*no+y] = c
-		}
-	}
-	Kth := couplingMatrix(Cm, no, sp.K.GTheta)
-	gw := math.Ldexp(1, -(GOmegaShift - GThetaShift))
-	// stage order: Sec.2.5 (essential classes first, then by lifetime); band modes live on the essential/long-cycle
-	// classes, so stages fall back to paper_v2 Eq.(18) coarse -> fine digit level.
-	nst := 0
-	for _, l := range level {
-		nst = max(nst, l+1)
-	}
-	maxWin := S.NLevel + 2
-	setInner("[D] KTE ticks", float64((nst+maxWin)*sp.K.NLost), "")
-	act := make([]float64, no)
-	tk := 0
-	rNow := func() float64 {
-		if nm == 0 || len(allm) == 0 {
-			return 1
-		}
+	rbar := 1.0
+	if nm > 0 && len(allm) > 0 {
 		var rs float64
 		for m := 0; m < nm; m++ {
 			var z complex128
@@ -920,67 +888,9 @@ func synthD(ents []Entry, G [2]int, sp SynthParams) ([]float64, SynthRec) {
 			}
 			rs += cmplx.Abs(z) / float64(len(allm))
 		}
-		return rs / float64(nm)
+		rbar = rs / float64(nm)
 	}
-	for s := 0; s < nst; s++ {
-		for k := range act {
-			act[k] = 0
-			if level[k] <= s {
-				act[k] = 1
-			}
-		}
-		ticks, r := runAnnealStage(sp.K.NLost, sp.K.RTol, rNow(), func(scale float64) {
-			kteTick(theta, omega, Kth, gw, act, scale, sp.D.OmegaUpdate)
-		}, rNow)
-		tk += ticks
-		innerSet(float64(tk), 0)
-		logf("        anneal stage %d/%d (digit level %d): r=%.6f active=%d ticks=%d/%d", s+1, nst, s, r, countAct(act), ticks, sp.K.NLost)
-	}
-	for k := range act {
-		act[k] = 1
-	}
-	clear := make([]bool, no)
-	var prev []bool
-	var rbar float64
-	for wn := 0; wn < maxWin; wn++ {
-		for k := range clear {
-			clear[k] = true
-		}
-		rbar = 0
-		for t := 0; t < sp.K.NLost; t++ {
-			kteTick(theta, omega, Kth, gw, act, 1, sp.D.OmegaUpdate)
-			tk++
-			for a := range allm {
-				for m := 0; m < nm; m++ {
-					if math.Abs(lift(theta[a*nm+m]-theta[m])) > 1.0/16 { // R-KTE-2 W_lock = 1/16 turn
-						clear[a*nm+m] = false
-					}
-				}
-			}
-			var rs float64
-			for m := 0; m < nm; m++ {
-				var z complex128
-				for a := range allm {
-					z += cmplx.Exp(complex(0, 2*math.Pi*theta[a*nm+m]))
-				}
-				rs += cmplx.Abs(z) / float64(len(allm))
-			}
-			rbar += rs / float64(nm)
-			innerSet(float64(tk), 0)
-		}
-		rbar /= float64(sp.K.NLost)
-		same := prev != nil
-		for k := range clear {
-			if same && clear[k] != prev[k] {
-				same = false
-			}
-		}
-		prev = append([]bool(nil), clear...)
-		if same {
-			break
-		}
-	}
-	endInner()
+	tk := 1
 	D.RMeas = rbar
 	// Step 6: merge decision (i)-(iv) and Eq.(19) merge over S_m
 	delta := make([][]complex128, nm)
@@ -1044,11 +954,13 @@ func synthD(ents []Entry, G [2]int, sp SynthParams) ([]float64, SynthRec) {
 		}
 		D.Merged++
 	}
-	// An unlocked tensor keeps the base grid. Curl TIES of a source that did not lock is the
-	// blend hodge-4 shipped at ppl 1.5e5. Eq.(19) already leaves an unlocked band bin with the base.
+	// Eq.(19) leaves an unlocked band bin with the base. The curl residual stays.
+	// flowGrid is the Hardy control on it: one Ricci–DeTurck step, and a site
+	// whose discrete Laplacian reaches 6/ρ² is capped back to the base.
+	// Replacing out with ref here made that step a no-op, so an unlocked Llama
+	// tensor shipped as the base.
 	if D.Merged == 0 {
-		out = append([]float64(nil), ref...)
-		logf("      [D] no mode locked: curl and band stay with the base")
+		logf("      [D] no mode locked: band stays with the base; curl residual kept for the Ricci–DeTurck step")
 	}
 	// apply band deltas: inverse A-axis digit DFT of the (Hermitian-completed) band changes
 	if D.Merged > 0 {
@@ -1077,11 +989,12 @@ func synthD(ents []Entry, G [2]int, sp SynthParams) ([]float64, SynthRec) {
 		}
 	}
 	D.RMeasJ, D.RPredJ = D.RMeas, D.RPred
+	out = flowGrid(out, ref, G)
 	rec.DFT = fftn(toC(out), dims, false)
 	D.Secs = time.Since(t0).Seconds()
 	rec.R = []float64{D.RMeas}
 	rec.Passes = append(rec.Passes, PassRec{R: D.RMeas, Steps: tk, Converged: true, Locked: D.TickLocked, NOsc: no, NModes: nm, Merged: D.Merged, Secs: D.Secs})
-	logf("      [D] lock pass: band modes=%d osc=%d PSR-pass=%d/%d L2-pass=%d winding-match=%d tick-locked(lost clear)=%d/%d merged osc=%d modes=%d/%d r measured=%.4f predicted(OA)=%.4f K/K_c=%.3g group-delay shift=%s czt-E1=%.3g bins ticks=%d omega_update=%v (%.2fs)",
+	logf("      [D] lock pass: band modes=%d osc=%d PSR-pass=%d/%d L2-pass=%d winding-match=%d window-locked=%d/%d merged osc=%d modes=%d/%d r measured=%.4f predicted(OA)=%.4f K/K_c=%.3g group-delay shift=%s czt-E1=%.3g bins steps=%d omega_update=%v (%.2fs)",
 		nm, no, D.PSRPass, no, D.L2Pass, D.WindOK, D.TickLocked, D.NonBase, D.MergedOsc, D.Merged, nm, D.RMeas, D.RPred, D.KoverKc, fmtF(D.Shift), czte, tk, sp.D.OmegaUpdate, D.Secs)
 	return out, rec
 }

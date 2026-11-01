@@ -6,11 +6,12 @@ import (
 	"testing"
 
 	"hodgemix/eval"
+	"hodgemix/tower"
 )
 
-// Audio and vision tensors from a contributor are written into the output
-// byte for byte. They stay out of the text mix, and Champ accepts the file.
-func TestTowersStayInTheOutput(t *testing.T) {
+// Audio and vision tensors from a contributor stay out of the text mix and out of
+// the output. The output's towers are the L-A towers, and Champ accepts the file.
+func TestSourceTowersAreNotWritten(t *testing.T) {
 	dir := tempDir(t)
 	base := writeTiny(t, filepath.Join(dir, "base"), tinyModel{D: 128, F: 192, H: 2, KV: 1, HD: 64, L: 2, V: 260}, 3)
 	src := writeTiny(t, filepath.Join(dir, "src"), tinyModel{D: 128, F: 192, H: 2, KV: 1, HD: 64, L: 2, V: 260}, 4)
@@ -67,32 +68,23 @@ func TestTowersStayInTheOutput(t *testing.T) {
 	if !got.Has("model.layers.0.self_attn.q_proj.weight") {
 		t.Fatal("text q_proj missing")
 	}
-	for name, want := range towers {
+	for name := range towers {
+		if got.Has(name) {
+			t.Fatalf("%s is in the output", name)
+		}
+	}
+	for _, name := range []string{tower.VisEmbed + ".weight", tower.AudEmbed + ".weight", tower.VisTower + ".sigma", tower.AudTower + ".sigma"} {
 		if !got.Has(name) {
-			t.Fatalf("missing %s", name)
-		}
-		b, err := got.Raw(name)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !bytes.Equal(b, want) {
-			t.Fatalf("%s bytes changed", name)
-		}
-		if !eqShape(got.H[name].Shape, shapes[name]) || got.H[name].Dtype != "BF16" {
-			t.Fatalf("%s is %s%v", name, got.H[name].Dtype, got.H[name].Shape)
+			t.Fatalf("missing L-A tensor %s", name)
 		}
 	}
 	bad, notes := champCheck(out+".ternary.safetensors", champConfigPath(out))
 	if len(bad) > 0 {
 		t.Fatalf("champCheck: %v", bad)
 	}
-	saw := false
 	for _, n := range notes {
 		if bytes.Contains([]byte(n), []byte("audio, vision, embeddings")) {
-			saw = true
+			t.Fatalf("notes %v", notes)
 		}
-	}
-	if !saw {
-		t.Fatalf("notes %v", notes)
 	}
 }

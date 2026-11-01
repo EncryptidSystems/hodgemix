@@ -36,7 +36,7 @@ func TestSpliceHodge4LA(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, k := range base.Keys {
-		if carriedTensor(k) {
+		if asideTensor(k) {
 			t.Fatalf("%s already has a tower tensor (%s)", src, k)
 		}
 		b, err := base.Raw(k)

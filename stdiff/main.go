@@ -10,6 +10,10 @@
 //     one-element tensor (weight_scale) the ratio b / a;
 //   - anything else: whether the bytes are equal.
 // Tensors in only one file are listed with their dtype and shape. Each file's sha256 is printed.
+// Every tensor of b whose bytes equal a tensor of a is also counted under any name, so a tensor
+// carried into the output under another name is still found. A one-element tensor that matches
+// only under another name is counted apart: a BF16 scalar has 65536 values, and two files share
+// some by chance.
 package main
 
 import (
@@ -81,6 +85,73 @@ func (s *stFile) read(name string) ([]byte, error) {
 	b := make([]byte, e.Offsets[1]-e.Offsets[0])
 	_, err := s.f.ReadAt(b, s.base+e.Offsets[0])
 	return b, err
+}
+
+// tensorSHA is the sha256 of each tensor's bytes.
+func (s *stFile) tensorSHA() (map[string]string, error) {
+	out := make(map[string]string, len(s.tensors))
+	for k, e := range s.tensors {
+		h := sha256.New()
+		if _, err := io.Copy(h, io.NewSectionReader(s.f, s.base+e.Offsets[0], e.Offsets[1]-e.Offsets[0])); err != nil {
+			return nil, fmt.Errorf("%s: %v", k, err)
+		}
+		out[k] = hex.EncodeToString(h.Sum(nil))
+	}
+	return out, nil
+}
+
+// carried is a tensor of b whose bytes equal a tensor of a.
+type carried struct {
+	B     string `json:"b"`
+	A     string `json:"a"`
+	Dtype string `json:"dtype"`
+	Shape []int  `json:"shape"`
+	Bytes int64  `json:"bytes"`
+}
+
+// contentMatches pairs every tensor of b with a tensor of a that has the same bytes, preferring
+// the same name. It returns the pairs and the count of one-element tensors equal only to a tensor
+// of another name.
+func contentMatches(A, B *stFile) ([]carried, int, error) {
+	ha, err := A.tensorSHA()
+	if err != nil {
+		return nil, 0, err
+	}
+	hb, err := B.tensorSHA()
+	if err != nil {
+		return nil, 0, err
+	}
+	bySHA := map[string][]string{}
+	for k, s := range ha {
+		bySHA[s] = append(bySHA[s], k)
+	}
+	for _, ks := range bySHA {
+		sort.Strings(ks)
+	}
+	var pairs []carried
+	scalars := 0
+	for k, s := range hb {
+		ks := bySHA[s]
+		if len(ks) == 0 {
+			continue
+		}
+		e := B.tensors[k]
+		n := int64(1)
+		for _, d := range e.Shape {
+			n *= int64(d)
+		}
+		a := ks[0]
+		if ha[k] == s {
+			a = k
+		}
+		if n == 1 && a != k {
+			scalars++
+			continue
+		}
+		pairs = append(pairs, carried{B: k, A: a, Dtype: e.Dtype, Shape: e.Shape, Bytes: e.Offsets[1] - e.Offsets[0]})
+	}
+	sort.Slice(pairs, func(i, j int) bool { return pairs[i].B < pairs[j].B })
+	return pairs, scalars, nil
 }
 
 func fileSHA(path string) (string, error) {
@@ -215,6 +286,17 @@ func compare(name string, ea entry, a, b []byte) tensorDiff {
 	return d
 }
 
+// role is a tensor name with its layer index written as N.
+func role(k string) string {
+	if i := strings.Index(k, "layers."); i >= 0 {
+		j := strings.Index(k[i+7:], ".")
+		if j > 0 {
+			return k[:i+7] + "N" + k[i+7+j:]
+		}
+	}
+	return k
+}
+
 func sameShape(x, y []int) bool {
 	if len(x) != len(y) {
 		return false
@@ -324,15 +406,8 @@ func run(pa, pb, out string) error {
 		g := map[string]string{}
 		for _, k := range list {
 			e := s.tensors[k]
-			role := k
-			if i := strings.Index(k, "layers."); i >= 0 {
-				j := strings.Index(k[i+7:], ".")
-				if j > 0 {
-					role = k[:i+7] + "N" + k[i+7+j:]
-				}
-			}
-			if _, ok := g[role]; !ok {
-				g[role] = fmt.Sprintf("%s%v", e.Dtype, e.Shape)
+			if _, ok := g[role(k)]; !ok {
+				g[role(k)] = fmt.Sprintf("%s%v", e.Dtype, e.Shape)
 			}
 		}
 		return g
@@ -343,12 +418,37 @@ func run(pa, pb, out string) error {
 	if len(onlyB) > 0 {
 		fmt.Printf("only in b: %d %v\n", len(onlyB), group(onlyB, B))
 	}
+	pairs, scalars, err := contentMatches(A, B)
+	if err != nil {
+		return err
+	}
+	var carriedBytes int64
+	renamed := 0
+	roles := map[string]int{}
+	var order []string
+	for _, p := range pairs {
+		carriedBytes += p.Bytes
+		if p.A != p.B {
+			renamed++
+		}
+		r := role(p.B)
+		if roles[r] == 0 {
+			order = append(order, r)
+		}
+		roles[r]++
+	}
+	fmt.Printf("content of a in b, under any name: %d tensors, %d bytes (%d under another name); %d one-element tensors equal to another name's value\n",
+		len(pairs), carriedBytes, renamed, scalars)
+	for _, r := range order {
+		fmt.Printf("  %s: %d\n", r, roles[r])
+	}
 	if out != "" {
 		rep := map[string]any{
 			"a": map[string]any{"path": pa, "sha256": shaA, "tensors": len(A.tensors), "metadata": A.meta},
 			"b": map[string]any{"path": pb, "sha256": shaB, "tensors": len(B.tensors), "metadata": B.meta},
 			"shared": len(names), "byte_identical": equal, "dtype_shape_changed": mismatch,
 			"total": tot, "tensors": diffs, "only_a": onlyA, "only_b": onlyB,
+			"carried": pairs, "carried_bytes": carriedBytes, "equal_scalars": scalars,
 		}
 		raw, _ := json.MarshalIndent(rep, "", "  ")
 		if err := os.WriteFile(out, raw, 0o644); err != nil {

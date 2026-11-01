@@ -75,6 +75,7 @@ type model struct {
 	nEmb, nv  int // embedding rows, LM head rows
 	fnorm     []float32
 	invFreq   []float64
+	imageSys  string                // Qwen-Image text encoder: the prompt system, empty otherwise
 	flows     []map[string]*flowLin // per layer and role, when instrumented (flow.go)
 	rec       []FlowLayer           // the token being fed's currents, when recording
 	cells     Cells
@@ -793,21 +794,24 @@ func open(modelPath, tokPath string) (*model, *tok, error) {
 		return nil, nil, fmt.Errorf("%s has ids up to %d but %s embeds %d rows: it is not this model's tokenizer",
 			tokPath, tk.n-1, modelPath, m.nEmb)
 	}
+	tk.sys = m.imageSys
 	return m, tk, nil
 }
 
 // ---- tokenizer (byte-level BPE) ----
 
 type tok struct {
-	b2u     [256]rune
-	u2b     map[rune]byte
-	vocab   map[string]int
-	inv     map[int]string
-	ranks   map[string]int
-	special map[string]int // added tokens: encodeChat keeps them whole
-	bos     []int          // what the post-processor puts before a sequence (none for most chat models)
-	eot     string         // the turn end: the tokenizer config's eos_token (none without one)
-	n       int            // 1 + the largest id
+	b2u      [256]rune
+	u2b      map[rune]byte
+	vocab    map[string]int
+	inv      map[int]string
+	ranks    map[string]int
+	special  map[string]int // added tokens: encodeChat keeps them whole
+	bos      []int          // what the post-processor puts before a sequence (none for most chat models)
+	eot      string         // the turn end: the tokenizer config's eos_token (none without one)
+	template string         // tokenizer_config chat_template, when it is one string
+	sys      string         // default system text for this model (the image prompt, else empty = ChatSystem)
+	n        int            // 1 + the largest id
 }
 
 func loadTok(p, cfgPath string) (*tok, error) {
@@ -881,25 +885,67 @@ func loadTok(p, cfgPath string) (*tok, error) {
 			return nil, err
 		}
 		var tc struct {
-			EOS json.RawMessage `json:"eos_token"`
+			EOS      json.RawMessage `json:"eos_token"`
+			Template json.RawMessage `json:"chat_template"`
 		}
 		if err := json.Unmarshal(b, &tc); err != nil {
 			return nil, fmt.Errorf("%s: %v", cfgPath, err)
 		}
-		var e string
-		if json.Unmarshal(tc.EOS, &e) != nil {
-			var o struct {
-				Content string `json:"content"`
-			}
-			json.Unmarshal(tc.EOS, &o)
-			e = o.Content
-		}
+		e := eosText(tc.EOS, t.special, t.inv)
 		if _, ok := t.special[e]; !ok {
 			return nil, fmt.Errorf("%s: eos_token %q is not an added token of %s", cfgPath, e, p)
 		}
 		t.eot = e
+		var one string
+		if json.Unmarshal(tc.Template, &one) == nil {
+			t.template = one
+		}
 	}
 	return t, nil
+}
+
+// eosText is the turn-end string. A list (Llama 3.2 writes several ids) prefers the
+// token this tokenizer actually has: the instruct end, then the first entry.
+func eosText(raw json.RawMessage, special map[string]int, inv map[int]string) string {
+	var e string
+	if json.Unmarshal(raw, &e) == nil && e != "" {
+		return e
+	}
+	var n float64
+	if json.Unmarshal(raw, &n) == nil && inv != nil {
+		if s := inv[int(n)]; s != "" {
+			return s
+		}
+	}
+	var o struct {
+		Content string `json:"content"`
+	}
+	if json.Unmarshal(raw, &o) == nil && o.Content != "" {
+		return o.Content
+	}
+	var arr []json.RawMessage
+	if json.Unmarshal(raw, &arr) != nil {
+		return ""
+	}
+	var texts []string
+	for _, el := range arr {
+		if s := eosText(el, nil, inv); s != "" {
+			texts = append(texts, s)
+		}
+	}
+	for _, prefer := range []string{"<|eot_id|>", "<|im_end|>", "<end_of_turn>", "<|return|>"} {
+		if _, ok := special[prefer]; ok {
+			for _, s := range texts {
+				if s == prefer {
+					return s
+				}
+			}
+		}
+	}
+	if len(texts) > 0 {
+		return texts[0]
+	}
+	return ""
 }
 
 // templateBOS is the special tokens a TemplateProcessing post-processor (alone or inside a Sequence)
@@ -1316,12 +1362,7 @@ func Chat(modelPath, tokPath string, n int) (string, int, error) {
 	if err != nil {
 		return "", 0, err
 	}
-	sys := "System: " + ChatSystem + tk.eot
-	if os.Getenv("HODGEMIX_CHAT_NOSYS") != "" {
-		sys = ""
-	}
-	ids := tk.encodeChat(sys + "User: " + ChatUser + tk.eot + "Assistant: ")
-	eot, hasEot := tk.special[tk.eot]
+	ids := tk.encodeChat(tk.promptTurn(tk.chatSystem(), ChatUser))
 	s := &seq{}
 	var lg []float32
 	for i, id := range ids {
@@ -1334,13 +1375,23 @@ func Chat(modelPath, tokPath string, n int) (string, int, error) {
 	var sb strings.Builder
 	for j := 0; j < n; j++ {
 		nx := argmax(lg)
-		if hasEot && nx == eot {
+		if tk.ended(nx) {
 			break
 		}
 		sb.WriteString(tk.decode(nx))
 		lg = m.step(s, nx, len(ids)+j)
 	}
 	return sb.String(), len(ids), nil
+}
+
+func (t *tok) chatSystem() string {
+	if os.Getenv("HODGEMIX_CHAT_NOSYS") != "" {
+		return ""
+	}
+	if t != nil && t.sys != "" {
+		return t.sys
+	}
+	return ChatSystem
 }
 
 // Generate feeds prompt and then up to n new tokens. chat uses the page's system prompt and
@@ -1362,11 +1413,7 @@ func Generate(modelPath, tokPath, user string, n int, chat bool, cells Cells, ea
 		if user == "" {
 			user = ChatUser
 		}
-		sys := "System: " + ChatSystem + tk.eot
-		if os.Getenv("HODGEMIX_CHAT_NOSYS") != "" {
-			sys = ""
-		}
-		ids = tk.encodeChat(sys + "User: " + user + tk.eot + "Assistant: ")
+		ids = tk.encodeChat(tk.promptTurn(tk.chatSystem(), user))
 	} else {
 		ids = tk.encode(user)
 	}
@@ -1408,11 +1455,10 @@ func Generate(modelPath, tokPath, user string, n int, chat bool, cells Cells, ea
 		}
 		report(i, id, next)
 	}
-	eot, hasEot := tk.special[tk.eot]
 	var sb strings.Builder
 	for j := 0; j < n; j++ {
 		nx := argmax(lg)
-		if hasEot && nx == eot {
+		if tk.ended(nx) {
 			break
 		}
 		sb.WriteString(tk.decode(nx))
@@ -1481,8 +1527,7 @@ func calibration(tk *tok) [][]int {
 	return append(c, tk.encodeChat(chatPrompt(tk)))
 }
 
-// chatPrompt is the page's system message and first question in its chat format, with the
-// tokenizer's own turn end.
+// chatPrompt is the page's system message and first question in this tokenizer's chat format.
 func chatPrompt(tk *tok) string {
-	return "System: " + ChatSystem + tk.eot + "User: " + ChatUser + tk.eot + "Assistant: "
+	return tk.promptTurn(tk.chatSystem(), ChatUser)
 }

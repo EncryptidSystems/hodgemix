@@ -73,21 +73,24 @@ func (s *Session) Logits(ids []int) [][]float32 {
 	return out
 }
 
-// Dialog is one conversation in the runtime's "Role: content<eot>" format.
+// Dialog is one conversation in this tokenizer's chat format (Llama 3 headers, Qwen
+// im_start turns, or the 2B4T "Role: content" line).
 type Dialog struct {
-	s   *Session
-	q   *seq
-	pos int
-	lg  []float32
-	Fed []int // every id fed so far, prompt and replies
+	s     *Session
+	q     *seq
+	pos   int
+	lg    []float32
+	Fed   []int // every id fed so far, prompt and replies
+	sys   string
+	first bool
 }
 
 // NewDialog starts a conversation with system as its system message (none when empty).
 func (s *Session) NewDialog(system string) *Dialog {
-	c := &Dialog{s: s, q: &seq{}}
+	c := &Dialog{s: s, q: &seq{}, sys: system, first: true}
 	c.feed(s.tk.bos)
-	if system != "" {
-		c.feed(s.tk.chatPieces("System: " + system + s.tk.eot))
+	if pre := s.tk.systemPrefix(system); pre != "" {
+		c.feed(s.tk.chatPieces(pre))
 	}
 	return c
 }
@@ -111,12 +114,17 @@ func (c *Dialog) Pos() int { return c.pos }
 
 // User feeds a user turn and the assistant's prompt.
 func (c *Dialog) User(text string) {
-	c.feed(c.s.tk.chatPieces("User: " + text + c.s.tk.eot + "Assistant: "))
+	sys := ""
+	if c.first && c.s.tk.systemPrefix(c.sys) == "" {
+		sys = c.sys
+	}
+	c.first = false
+	c.feed(c.s.tk.chatPieces(c.s.tk.promptTurn(sys, text)))
 }
 
 // Assistant feeds a reply the model did not sample (a worked example) and the turn end.
 func (c *Dialog) Assistant(text string) {
-	c.feed(c.s.tk.chatPieces(text + c.s.tk.eot))
+	c.feed(c.s.tk.chatPieces(text + c.s.tk.closeTurn()))
 }
 
 // Fork is a copy of the dialog that shares its cache so far. What either one feeds next stays its own:
@@ -130,16 +138,13 @@ func (c *Dialog) Fork() *Dialog {
 			q.kc[li], q.vc[li] = k[:len(k):len(k)], v[:len(v):len(v)]
 		}
 	}
-	return &Dialog{s: c.s, q: q, pos: c.pos, lg: c.lg, Fed: append([]int(nil), c.Fed...)}
+	return &Dialog{s: c.s, q: q, pos: c.pos, lg: c.lg, Fed: append([]int(nil), c.Fed...), sys: c.sys, first: c.first}
 }
 
 // Score is the log-probability that the assistant replies text and then ends the turn, and the
 // number of tokens that covers. It runs on a fork, so the dialog itself is unchanged.
 func (c *Dialog) Score(text string) (float64, int) {
-	ids := c.s.tk.chatPieces(text)
-	if eot, ok := c.s.tk.special[c.s.tk.eot]; ok {
-		ids = append(ids, eot)
-	}
+	ids := c.s.tk.chatPieces(text + c.s.tk.closeTurn())
 	f := c.Fork()
 	lp := 0.0
 	for i, id := range ids {
@@ -162,12 +167,14 @@ type Sampling struct {
 // says so. The turn end is fed, so a following User continues the same cache. It returns the reply's
 // ids without the turn end, and whether the model ended the turn itself.
 func (c *Dialog) Reply(n int, sp Sampling, stop func(ids []int) bool) ([]int, bool) {
-	eot, hasEot := c.s.tk.special[c.s.tk.eot]
 	var ids []int
 	for j := 0; j < n; j++ {
 		nx := sample(c.lg, sp)
-		if hasEot && nx == eot {
-			c.feed([]int{eot})
+		if c.s.tk.ended(nx) {
+			c.feed([]int{nx})
+			if tail := c.s.tk.afterStop(); tail != "" {
+				c.feed(c.s.tk.chatPieces(tail))
+			}
 			return ids, true
 		}
 		ids = append(ids, nx)
@@ -176,8 +183,8 @@ func (c *Dialog) Reply(n int, sp Sampling, stop func(ids []int) bool) ([]int, bo
 			break
 		}
 	}
-	if hasEot {
-		c.feed([]int{eot})
+	if end := c.s.tk.closeTurn(); end != "" {
+		c.feed(c.s.tk.chatPieces(end))
 	}
 	return ids, false
 }

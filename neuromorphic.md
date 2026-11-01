@@ -140,7 +140,7 @@ The calibration length then becomes derivable rather than fixed. An empirical-Be
 
 The traffic graph has (layer, cell) nodes from `volume.go`, with edge weights equal to the expected events per token from P0. Hall's quadratic placement minimizes \(\sum w_{ij}\|p_i - p_j\|^2\). Its solution is the second and third eigenvectors of the traffic Laplacian. The conjugate-gradient machinery in `cochain.go` already solves this Laplacian class.
 
-To round to grid slots, assign nodes to slots by the existing `hungarian` (`math.go:895`) on distance cost. That is optimal for the linear assignment step and needs no search over placements.
+To round to grid slots, assign nodes to slots by `train.Align` (the gap rule). A slot with a unique neighbour inside the strip is copied. A collision stays on the base value. There is no assignment search.
 
 The cochain's Hodge split also says which traffic is gradient, a DAG-like pipeline, and which is cycle, the residual loops. Cycle traffic is where buffers are needed.
 
@@ -206,7 +206,7 @@ Everything up to P6 is Go-only and runs on the current box.
 2. **Entry point for the event forward.** It is bit-identical, so it can replace the forward by logic wherever it is faster, with no flag. If you want it selectable anyway (for example to compare speeds), that would be a new flag, which needs your approval.
 3. **Integer KTE.** Should the integer tick become *the* lock, so that the papers' float tick is the reference, or stay a hardware-equivalence test only?
 4. **Calibration length.** If the empirical-Bernstein count (N6) exceeds today's calibration set, should the run stop (nothing fails soft) or report?
-5. **The towers.** Should Gemma 4's encoders (`assimtowers.go`, `towerwasm/`) be in scope? Audio frames are the one place where temporal deltas (N4) are known to pay in the sigma-delta literature.
+5. **The towers.** Should the L-A towers (`tower/`, `towerwasm/`) be in scope? Gemma 4's own encoders are no longer written. Audio frames are the one place where temporal deltas (N4) are known to pay in the sigma-delta literature.
 
 ## Sources
 

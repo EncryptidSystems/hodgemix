@@ -421,12 +421,12 @@ func selftestExtra() {
 	for i := 0; i < 12; i++ {
 		copy(P[perm[i]*8:perm[i]*8+8], ref[i*8:i*8+8])
 	}
-	Q, _, _ := seedAssign(P, ref, G)
+	Q, _, _, _, _ := seedAssign(P, ref, G)
 	e = 0
 	for i := range Q {
 		e = math.Max(e, math.Abs(Q[i]-ref[i]))
 	}
-	fmt.Printf("seed assignment (Hungarian): max|aligned-ref|=%.1e\n", e)
+	fmt.Printf("seed assignment (gap rule): max|aligned-ref|=%.1e\n", e)
 	// Sec.4 absmean ternary pack: 4 trits/U8 round trip
 	q := []int8{-1, 0, 1, 1, 0, -1, 1, -1}
 	b := packTrits(q, 4, 2)

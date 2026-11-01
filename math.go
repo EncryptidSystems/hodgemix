@@ -9,6 +9,8 @@ import (
 	"runtime"
 	"sort"
 	"sync"
+
+	"hodgemix/train"
 )
 
 // Paper_v2 Eq.(6): mixed-radix factorisation of a channel length, coarsest (largest prime) digit first,
@@ -890,105 +892,27 @@ func seedShift(grid, ref []float64, dims []int, pcEps float64) ([]float64, []int
 	return A, sh
 }
 
-// hungarian: min-cost assignment, cost n x n; returns p[i] = column for row i.
-// Paper: Sec.3.1 step 1 Seed: Git Re-Basin / OT assignment (linear assignment solver)
-func hungarian(cost [][]float64) []int {
-	n := len(cost)
-	INF := math.Inf(1)
-	u := make([]float64, n+1)
-	v := make([]float64, n+1)
-	p := make([]int, n+1)
-	way := make([]int, n+1)
-	for i := 1; i <= n; i++ {
-		p[0] = i
-		j0 := 0
-		minv := make([]float64, n+1)
-		used := make([]bool, n+1)
-		for j := range minv {
-			minv[j] = INF
-		}
-		for {
-			used[j0] = true
-			i0, delta, j1 := p[j0], INF, 0
-			for j := 1; j <= n; j++ {
-				if !used[j] {
-					cur := cost[i0-1][j-1] - u[i0] - v[j]
-					if cur < minv[j] {
-						minv[j], way[j] = cur, j0
-					}
-					if minv[j] < delta {
-						delta, j1 = minv[j], j
-					}
-				}
-			}
-			for j := 0; j <= n; j++ {
-				if used[j] {
-					u[p[j]] += delta
-					v[j] -= delta
-				} else {
-					minv[j] -= delta
-				}
-			}
-			j0 = j1
-			if p[j0] == 0 {
-				break
-			}
-		}
-		for {
-			j1 := way[j0]
-			p[j0] = p[j1]
-			j0 = j1
-			if j0 == 0 {
-				break
-			}
-		}
-	}
-	ans := make([]int, n)
-	for j := 1; j <= n; j++ {
-		ans[p[j]-1] = j - 1
-	}
-	return ans
+// seedAssign places each source fibre on the base by the gap rule
+// (Lattice Hilbert 21, Lemma 4.1). A certified fibre is copied. An uncertified
+// fibre is the cone cap, the base value. There is no assignment search.
+// rowHits and colHits count certified fibres. Zero on either axis means the
+// returned grid is the base on that axis.
+func seedAssign(A, ref []float64, G [2]int) (grid []float64, permR, permC []int, rowHits, colHits int) {
+	return train.Align(A, ref, G[0], G[1])
 }
 
-// seedAssign: weight-matching permutation of rows then cols of A onto ref (maximize <ref, P A Q>).
-// Paper: Sec.3.1 step 1 Seed: starting permutation by Re-Basin / OT weight matching
-func seedAssign(A, ref []float64, G [2]int) ([]float64, []int, []int) {
-	Gr, Gc := G[0], G[1]
-	cost := make([][]float64, Gr)
-	for i := range cost {
-		cost[i] = make([]float64, Gr)
-		for j := 0; j < Gr; j++ {
-			var d float64
-			for c := 0; c < Gc; c++ {
-				d += ref[i*Gc+c] * A[j*Gc+c]
-			}
-			cost[i][j] = -d
-		}
+// placeSource is the seed used by both locks. A phase-correlation shift is
+// applied first. Gap selection then copies only certified fibres. When an
+// axis certifies nothing, the cone cap is the whole base and the source would
+// not enter the tensor, so the shifted source is kept.
+func placeSource(g, ref []float64, dims []int, G [2]int) (grid []float64, sh, pr, pc []int) {
+	g2, sh := seedShift(g, ref, dims, 0)
+	g3, pr, pc, rh, ch := seedAssign(g2, ref, G)
+	if rh == 0 || ch == 0 {
+		logf("      seed: gap selection certified rows %d/%d cols %d/%d; source grid kept", rh, G[0], ch, G[1])
+		return g2, sh, identity(G[0]), identity(G[1])
 	}
-	pr := hungarian(cost)
-	B := make([]float64, len(A))
-	for i := 0; i < Gr; i++ {
-		copy(B[i*Gc:(i+1)*Gc], A[pr[i]*Gc:(pr[i]+1)*Gc])
-	}
-	cost = make([][]float64, Gc)
-	for i := range cost {
-		cost[i] = make([]float64, Gc)
-		for j := 0; j < Gc; j++ {
-			var d float64
-			for r := 0; r < Gr; r++ {
-				d += ref[r*Gc+i] * B[r*Gc+j]
-			}
-			cost[i][j] = -d
-		}
-	}
-	pc := hungarian(cost)
-	Cm := make([]float64, len(A))
-	for r := 0; r < Gr; r++ {
-		for i := 0; i < Gc; i++ {
-			Cm[r*Gc+i] = B[r*Gc+pc[i]]
-		}
-	}
-	return Cm, pr, pc
+	return g3, sh, pr, pc
 }
 
 // ---------------- ternary TIES on ternary codes (absmean codes, sign election, mask union) ----------------

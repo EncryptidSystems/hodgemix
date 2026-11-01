@@ -6,9 +6,9 @@ base:
   special_tokens_map: C:\Users\grego\models\prod\2b4t\special_tokens_map.json
   generation_config: C:\Users\grego\models\prod\2b4t\generation_config.json
 sources:
-  - model: C:\Users\grego\Downloads\model (3).safetensors
+  - model: C:\Users\grego\models\prod\vaultgemma\model.bnz.ternary.safetensors
     weight: 1
     tokenizer: C:\Users\grego\models\prod\vaultgemma\tokenizer.json
-    tokenizer_config: C:\Users\grego\Downloads\tokenizer_config (2).json
-    config: C:\Users\grego\Downloads\config (3).json
-out: C:\Users\grego\models\dev\hodge-vaultgemma-1\hodge-vaultgemma-1.bnz
+    tokenizer_config: C:\Users\grego\models\prod\vaultgemma\tokenizer_config.json
+    config:  C:\Users\grego\models\prod\vaultgemma\config.json
+out: C:\Users\grego\models\dev\hodge-vaultgemma-1\hodge-vaultgemma-2.bnz

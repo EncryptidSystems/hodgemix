@@ -59,5 +59,6 @@ Sources: his files first (RESEARCH_INDEX.md: jev_kuramoto KTE rules, DECLUT, MRH
     scales give ppl 702 vs 18. The source acts as noise around the base. A shared permutation would need a residual-stream matching
     across all layers, a per-layer head matching (whole heads, so RoPE pairs survive) and a per-layer FFN neuron matching, and even then
     models with unrelated pretraining (Qwen3 into 2B4T) are not known to merge by permutation; distillation (4) is the known route.
+    The seed no longer searches for a permutation. A fibre is copied only when the gap rule certifies it; every other slot stays the base value.
 19. **Qwen3 q_norm/k_norm** (per-head RMSNorm on q and k) has no BitNet counterpart and cannot be folded into linear weights; Qwen/Qwen2
     q/k/v biases are dropped too. Both are now logged per run.
