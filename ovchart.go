@@ -81,10 +81,12 @@ func ovChart(basePath, outTern string, heads, kv, hd int) (*ovReport, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer base.Close()
 	out, err := OpenST(outTern)
 	if err != nil {
 		return nil, err
 	}
+	defer out.Close()
 	f, err := os.OpenFile(outTern, os.O_RDWR, 0)
 	if err != nil {
 		return nil, err

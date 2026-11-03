@@ -26,6 +26,7 @@ sources:
   - model: [s-1.safetensors, s-2.safetensors]
     weight: 0.5
     tokenizer: s.json
+    config: cfg (2).json
 out: o.bnz
 settings:
   limbs: 1
@@ -53,5 +54,53 @@ settings:
 	os.WriteFile(rf, []byte("base:\n  model: b.safetensors\n  config: missing.json\n"), 0o644)
 	if _, err := loadRunFile(rf); err == nil {
 		t.Fatal("missing file accepted")
+	}
+	os.WriteFile(rf, []byte("base:\n  model: b.safetensors\n  tokenizer: tok (1).json\n"), 0o644)
+	if _, err := loadRunFile(rf); err == nil || !strings.Contains(err.Error(), "no config set") {
+		t.Fatalf("missing config: %v", err)
+	}
+}
+
+func TestWriteRunFileKeepsConfig(t *testing.T) {
+	dir := tempDir(t)
+	model := filepath.Join(dir, "m.safetensors")
+	neck := filepath.Join(dir, "m.neck.safetensors")
+	cfg := filepath.Join(dir, "config.json")
+	tok := filepath.Join(dir, "tokenizer.json")
+	tokc := filepath.Join(dir, "tokenizer_config.json")
+	for _, p := range []string{model, neck, cfg, tok, tokc} {
+		if err := os.WriteFile(p, []byte("{}"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	out := filepath.Join(dir, "out.yaml")
+	f := eval.ModelFiles{Tokenizer: tok, TokenizerConfig: tokc, Config: cfg}
+	if err := writeRunFile(out, []runEntry{runEntryOf(neck, f), runEntryOf(model, f)}); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nCfg := 0
+	for _, line := range strings.Split(string(b), "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "config:") {
+			nCfg++
+		}
+	}
+	if nCfg != 2 {
+		t.Fatalf("config not set on every model:\n%s", b)
+	}
+	if _, err := loadRunFile(out); err != nil {
+		t.Fatal(err)
+	}
+	if got := eval.FilesOf(neck).Config; got != cfg {
+		t.Fatalf("neck config %q", got)
+	}
+	if got := eval.FilesOf(model).Config; got != cfg {
+		t.Fatalf("ternary config %q", got)
+	}
+	if err := writeRunFile(out, []runEntry{runEntryOf(model, eval.ModelFiles{Tokenizer: tok})}); err == nil {
+		t.Fatal("empty config written")
 	}
 }

@@ -94,6 +94,7 @@ func repair(basePath, outTern, tok string) (*repairReport, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer baseST.Close()
 	ref, n, err := eval.NormStats(basePath, tok)
 	if err != nil {
 		return nil, err
@@ -114,6 +115,7 @@ func repair(basePath, outTern, tok string) (*repairReport, error) {
 		if err != nil {
 			return rep, err
 		}
+		defer out.Close()
 		f, err := os.OpenFile(outTern, os.O_RDWR, 0)
 		if err != nil {
 			return rep, err

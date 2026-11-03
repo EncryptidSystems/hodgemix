@@ -18,12 +18,14 @@ import (
 )
 
 const (
-	MRaw          = 0
-	MZstd         = 1
-	MTern         = 2
-	MBF16         = 3
-	Magic         = "BNZ4"
-	EmbChunkBytes = 8192 * 2560 * 2
+	MRaw  = 0
+	MZstd = 1
+	MTern = 2
+	MBF16 = 3
+	Magic = "BNZ4"
+	// EmbChunkRows is how many rows of a BF16 matrix go in one segment.
+	// The byte size is this many rows of that tensor's own width.
+	EmbChunkRows = 8192
 )
 
 type Segment struct {
@@ -92,9 +94,13 @@ func Plan(data []byte) ([]Segment, error) {
 		}
 		// hodgemix: the embedding is always written as row-range segments "name[r0:r1]" (even when it fits in
 		// one chunk), because bnz-loader's BitNetRT.plan() only schedules embedding segments named that way.
-		if it.Dtype == "BF16" && len(it.Shape) == 2 && (e-s > EmbChunkBytes || it.name == "model.embed_tokens.weight") {
-			rb := int64(2 * it.Shape[1])
-			rows := max(1, EmbChunkBytes/rb)
+		rb := int64(0)
+		if len(it.Shape) == 2 {
+			rb = int64(2 * it.Shape[1])
+		}
+		chunk := int64(EmbChunkRows) * rb
+		if it.Dtype == "BF16" && len(it.Shape) == 2 && rb > 0 && (e-s > chunk || it.name == "model.embed_tokens.weight") {
+			rows := int64(EmbChunkRows)
 			for r0 := int64(0); r0 < int64(it.Shape[0]); r0 += rows {
 				r1 := min(int64(it.Shape[0]), r0+rows)
 				segs = append(segs, Segment{Name: fmt.Sprintf("%s[%d:%d]", it.name, r0, r1), dtype: "BF16",

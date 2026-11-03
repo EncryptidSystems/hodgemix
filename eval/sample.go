@@ -9,6 +9,7 @@ import (
 	"math"
 	"math/rand"
 	"sort"
+	"strings"
 )
 
 // Session is an opened model and tokenizer.
@@ -52,6 +53,19 @@ func (s *Session) Encode(text string, chat, bos bool) []int {
 		return append(ids, s.tk.chatPieces(text)...)
 	}
 	return append(ids, s.tk.pieces(text)...)
+}
+
+// Segments is the BPE ids of each non-whitespace pre-token, in order. A whitespace
+// pre-token is not an anchor. The ids are the same merges pieces uses inside one pre-token.
+func (s *Session) Segments(text string) [][]int {
+	var out [][]int
+	for _, w := range pre.FindAllString(text, -1) {
+		if strings.TrimSpace(w) == "" {
+			continue
+		}
+		out = append(out, s.tk.bpe(w))
+	}
+	return out
 }
 
 // Decode is the text of ids.

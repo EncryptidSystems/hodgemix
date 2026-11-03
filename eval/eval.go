@@ -36,6 +36,8 @@ type Result struct {
 	MeanNLL float64     `json:"mean_nll"`
 	PPL     float64     `json:"ppl"`
 	Tokens  int         `json:"tokens"`
+	Vocab   int         `json:"vocab"` // tokenizer ids in the softmax
+	Head    int         `json:"head"`  // LM head rows
 }
 
 type lin struct {
@@ -988,25 +990,32 @@ func (t *tok) encode(s string) []int { return append(append([]int(nil), t.bos...
 func (t *tok) pieces(s string) []int {
 	var out []int
 	for _, w := range pre.FindAllString(s, -1) {
-		var sym []string
-		for _, b := range []byte(w) {
-			sym = append(sym, string(t.b2u[b]))
-		}
-		for {
-			best, bi := 1<<30, -1
-			for i := 0; i+1 < len(sym); i++ {
-				if r, ok := t.ranks[sym[i]+" "+sym[i+1]]; ok && r < best {
-					best, bi = r, i
-				}
+		out = append(out, t.bpe(w)...)
+	}
+	return out
+}
+
+// bpe is one pre-token's ids. The merge loop does not cross a pre-token boundary.
+func (t *tok) bpe(w string) []int {
+	sym := make([]string, 0, len(w))
+	for _, b := range []byte(w) {
+		sym = append(sym, string(t.b2u[b]))
+	}
+	for {
+		best, bi := 1<<30, -1
+		for i := 0; i+1 < len(sym); i++ {
+			if r, ok := t.ranks[sym[i]+" "+sym[i+1]]; ok && r < best {
+				best, bi = r, i
 			}
-			if bi < 0 {
-				break
-			}
-			sym = append(sym[:bi], append([]string{sym[bi] + sym[bi+1]}, sym[bi+2:]...)...)
 		}
-		for _, x := range sym {
-			out = append(out, t.vocab[x])
+		if bi < 0 {
+			break
 		}
+		sym = append(sym[:bi], append([]string{sym[bi] + sym[bi+1]}, sym[bi+2:]...)...)
+	}
+	out := make([]int, len(sym))
+	for i, x := range sym {
+		out[i] = t.vocab[x]
 	}
 	return out
 }
@@ -1038,13 +1047,52 @@ func logsoft(x []float32, i int) float64 {
 	return float64(x[i]) - m - math.Log(z)
 }
 
+// logsoftTok is the log probability of i when the softmax sums the scoring
+// tokenizer's ids. ok[j] is true for an id that tokenizer names. A head row
+// past that vocabulary is a token the texts were not encoded with, and it
+// stays out of this measure. The base 2B4T tokenizer is a dense prefix, so
+// this is the base head and leaves a union vocabulary's appended rows out.
+func logsoftTok(x []float32, i int, ok []bool) float64 {
+	n := len(ok)
+	if n > len(x) {
+		n = len(x)
+	}
+	m := math.Inf(-1)
+	for j := 0; j < n; j++ {
+		if ok[j] {
+			if v := float64(x[j]); v > m {
+				m = v
+			}
+		}
+	}
+	var z float64
+	for j := 0; j < n; j++ {
+		if ok[j] {
+			z += math.Exp(float64(x[j]) - m)
+		}
+	}
+	return float64(x[i]) - m - math.Log(z)
+}
+
 // Run loads modelPath and scores it with tokenizer tokPath.
 func Run(modelPath, tokPath string) (*Result, error) {
 	m, tk, err := open(modelPath, tokPath)
 	if err != nil {
 		return nil, err
 	}
-	r := &Result{Model: modelPath}
+	ok := make([]bool, tk.n)
+	for id := range tk.inv {
+		if id >= 0 && id < len(ok) {
+			ok[id] = true
+		}
+	}
+	vocab := 0
+	for _, on := range ok {
+		if on {
+			vocab++
+		}
+	}
+	r := &Result{Model: modelPath, Vocab: vocab, Head: m.nv}
 	for _, p := range Prompts {
 		ids := tk.encode(p)
 		s := &seq{}
@@ -1070,7 +1118,7 @@ func Run(modelPath, tokPath string) (*Result, error) {
 		s := &seq{}
 		var nll float64
 		for i := 0; i < len(ids)-1; i++ {
-			nll -= logsoft(m.step(s, ids[i], i), ids[i+1])
+			nll -= logsoftTok(m.step(s, ids[i], i), ids[i+1], ok)
 		}
 		r.NLL = append(r.NLL, nll/float64(len(ids)-1))
 		tot += nll

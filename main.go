@@ -32,6 +32,10 @@ func logScore(tag string, r *eval.Result) {
 	for _, g := range r.Gens {
 		logf("  %sgreedy %q -> %q", tag, g[0], g[1])
 	}
+	if r.Head > r.Vocab {
+		logf("  %smean NLL %.3f nats/token over %d tokens (ppl %.1f), softmax over %d tokenizer ids of %d head rows", tag, r.MeanNLL, r.Tokens, r.PPL, r.Vocab, r.Head)
+		return
+	}
 	logf("  %smean NLL %.3f nats/token over %d tokens (ppl %.1f)", tag, r.MeanNLL, r.Tokens, r.PPL)
 }
 
@@ -465,7 +469,7 @@ func main() {
 	attn := fs.String("attn", "on", "attention after marriage: fold a contributor's QK-norm, marry RoPE frequencies, match each layer's logit temperature to the base {on|off}")
 	srcTheta := fs.Float64("src-rope-theta", 0, "rope_theta of any model (base or source) whose config.json does not give one (Qwen3: 1000000)")
 	indexMode := fs.String("index", "married", "channel index: married = all contributors' channels in one MRH per axis, coordinates from the joint pop order | own = each model's own pop order (paper_v2 Eq.8)")
-	evalOn := fs.String("eval", "on", "after writing, score base and output with the CPU reference forward (greedy text + NLL on fixed sentences) {on|off}; needs a 2B4T-shape output")
+	evalOn := fs.String("eval", "on", "after writing, score base and output with the CPU reference forward (greedy text + NLL on fixed sentences) {on|off}; width, layers and activation come from the model's config")
 	evalTok := fs.String("eval-tokenizer", "", "tokenizer.json for --eval (default: the base's tokenizer from the run file)")
 	seedAl := fs.String("seed-align", "auto", "per-tensor seed alignment (Eq.12-13 shift + Re-Basin assignment) of each contributor's grid; auto = on (off measured ppl 1.3e7 on 2B4T + Qwen3: the married index alone does not align the models) {auto|on|off}")
 	vocabM := fs.String("vocab", "union", "output vocabulary: union = the base's tokens (same ids) + every source's other tokens, embeddings by the shared-vocabulary residual map, its own tokenizer.json (vocab.go) | base {union|base}")
@@ -474,9 +478,10 @@ func main() {
 	ovM := fs.String("ov", "chart", "attention OV circuits: chart = keep the base's v_proj (the head's chart) and carry v's change into o_proj to first order, no dO dV cross term (ovchart.go) | mix {chart|mix}")
 	pinM := fs.String("pin-mean", "on", "keep every mixed BitLinear's response to its mean input (the base forward's) equal to the base's: dW mu = 0 (pinmean.go) {on|off}")
 	repairM := fs.String("repair", "on", "after surgery, set every RMSNorm gain so each channel's spread matches the base's on the calibration tokens (REPAIR; surgery paper step 7 on every channel; repair.go). Passes run until the mean |log2| spread is under the stop in repair.go, short of a ratio of 1 {on|off}")
-	surg := fs.String("surgery", "on", "after the mix, put the base's codes back on the singular set of its forward: massive residual channels and the FFN spike units that write them (surgery.go; needs the 2B4T-shape reference forward) {on|off}")
+	surg := fs.String("surgery", "on", "after the mix, put the base's codes back on the singular set of its forward: massive residual channels and the FFN spike units that write them (surgery.go; the reference forward reads the model's config) {on|off}")
 	surgRatio := fs.Float64("surgery-ratio", SurgeryRatio, "a residual channel / FFN unit is singular at this many times the median's rms / peak")
 	bisectOn := fs.Bool("bisect", false, "mix each of --roles alone (every other tensor stays the base's), score each against the base with the reference forward, print role -> ppl; outputs are deleted, the table is kept in OUT.bisect.json")
+	keepOn := fs.Bool("keep", false, "score the base, mix each of --roles alone, keep a role when its perplexity is at most the base's, then mix the kept roles once into --out; the score is not an input to the mix; OUT.keep.json records the base, each role, and the output")
 	fs.Parse(os.Args[1:])
 	bnz4.ForceRANS = *forceRANS
 	switch *mrhMode {
@@ -543,17 +548,24 @@ func main() {
 	logf("paper_v2 parameters: g_theta=2^-%d weak=2^-%d W_lock=1/16 turn N_lost=%d refine tol=2^-8 key=12-bit rotate=%v residual=%v",
 		*gth, *gom-*gth, *nlost, cfg.rotate, cfg.residual)
 	if MRHMode == "dynamic" {
-		logf("MRH dynamic: MRH(r; C=%d), r = each axis' factorisation finest first (e.g. 2560 -> %v); pop order, buckets and grid levels from it; grid <= %d and <= the shortest contributor axis",
-			keyUniverse, RadicesFor(2560, keyUniverse), GridMax)
+		logf("MRH dynamic: MRH(r; C=%d), r = each axis' factorisation finest first; pop order, buckets and grid levels from it; grid <= %d and <= the shortest contributor axis",
+			keyUniverse, GridMax)
 	} else {
 		logf("MRH paper: 16-bucket levels, bucket = top 4-bit digit, grid <= 256")
 	}
-	if *bisectOn {
+	if *bisectOn && *keepOn {
+		die("--keep and --bisect are separate passes")
+	}
+	if *bisectOn || *keepOn {
 		tok := *evalTok
 		if tok == "" {
 			tok = eval.FilesOf(*base).Tokenizer
 		}
-		bisect(cfg, *base, srcs, *out, tok)
+		if *bisectOn {
+			bisect(cfg, *base, srcs, *out, tok)
+			return
+		}
+		keep(cfg, *base, srcs, *out, *outTern, *outMerged, *noVerify, tok)
 		return
 	}
 	run(cfg, *base, srcs, *out, *outTern, *outMerged, *noVerify)
@@ -567,9 +579,10 @@ type runCfg struct {
 	FD, targetCfg    string
 	signSeed         string
 	evalTok          string // "" = no eval
-	noBNZ            bool   // write the ternary safetensors only (--bisect)
+	noBNZ            bool   // write the ternary safetensors only (--bisect, --keep role passes)
 	topology         string // base | max | married
 	sp               SynthParams
+	keepRec          *keepReport // --keep: filled with the output perplexity before the report is written
 }
 
 type entry struct {
@@ -624,6 +637,7 @@ func run(c runCfg, basePath string, srcArgs []string, out, outTern, outMerged st
 	if err != nil {
 		die("%v", err)
 	}
+	defer baseST.Close()
 	all := []*ST{baseST}
 	ws := []float64{c.baseW}
 	wre := regexp.MustCompile(`^(.*):([-+]?[0-9.eE+-]+)$`)
@@ -638,6 +652,7 @@ func run(c runCfg, basePath string, srcArgs []string, out, outTern, outMerged st
 		if err != nil {
 			die("%v", err)
 		}
+		defer st.Close()
 		all = append(all, st)
 		ws = append(ws, w)
 	}
@@ -649,7 +664,10 @@ func run(c runCfg, basePath string, srcArgs []string, out, outTern, outMerged st
 	if !baseOnly {
 		logf("  --topology %s / --target-config: surgery, pin-mean, repair, ov chart and the union vocabulary apply to --topology base only and are not run", c.topology)
 	}
-	preflight(c, basePath, all, baseOnly)
+	metas := preflight(c, basePath, all, baseOnly)
+	if MRHMode == "dynamic" && len(metas) > 0 {
+		logf("MRH base hidden %d -> %v", metas[0].D, RadicesFor(metas[0].D, keyUniverse))
+	}
 	if err := os.MkdirAll(filepath.Dir(absP(out)), 0o755); err != nil {
 		die("%v", err)
 	}
@@ -1354,8 +1372,11 @@ func run(c runCfg, basePath string, srcArgs []string, out, outTern, outMerged st
 	if n := tokenizerVocab(of.Tokenizer); n > vocab {
 		die("the output's tokenizer.json has ids up to %d but its embedding has %d rows", n-1, vocab)
 	}
+	if of.Config == "" {
+		die("output: no config set (run file: config)")
+	}
 	eval.SetFiles(outTern, of)
-	if err := writeRunFile(out+".yaml", outTern, of); err != nil {
+	if err := writeRunFile(out+".yaml", []runEntry{runEntryOf(outTern, of)}); err != nil {
 		die("%v", err)
 	}
 	if RT != nil {
@@ -1390,12 +1411,12 @@ func run(c runCfg, basePath string, srcArgs []string, out, outTern, outMerged st
 		}
 		report["repair"] = rr
 	}
-	if ch, err := stampHodgeFile(champConfigPath(out)); err != nil {
+	if ch, err := stampHodgeFile(of.Config); err != nil {
 		die("config names: %v", err)
 	} else if len(ch) > 0 {
 		logf("  config.json: %s", strings.Join(ch, ", "))
 	}
-	bad, notes := champCheck(outTern, champConfigPath(out))
+	bad, notes := champCheck(outTern, of.Config)
 	if len(bad) > 0 {
 		die("the output does not run in Champ:\n  %s", strings.Join(bad, "\n  "))
 	}
@@ -1414,7 +1435,7 @@ func run(c runCfg, basePath string, srcArgs []string, out, outTern, outMerged st
 		if err := packNeck(outTern, basePath, neck, nLimbs, tol); err != nil {
 			die("neck: %v", err)
 		}
-		bad, notes = champCheck(neck, champConfigPath(out))
+		bad, notes = champCheck(neck, of.Config)
 		if len(bad) > 0 {
 			die("the neck pack does not run in Champ:\n  %s", strings.Join(bad, "\n  "))
 		}
@@ -1423,10 +1444,20 @@ func run(c runCfg, basePath string, srcArgs []string, out, outTern, outMerged st
 		}
 		bnzSrc = neck
 		report["neck"] = neck
+		eval.SetFiles(neck, of)
+	}
+	// The safetensors is what a rerun scores. config is the config.json this run wrote.
+	// The neck pack, when there is one, is the first entry.
+	served := []runEntry{runEntryOf(outTern, of)}
+	if bnzSrc != outTern {
+		served = []runEntry{runEntryOf(bnzSrc, of), runEntryOf(outTern, of)}
+	}
+	if err := writeRunFile(out+".yaml", served); err != nil {
+		die("%v", err)
 	}
 	// ---------- STAGE 5 ----------
-	if c.noBNZ { // --bisect: only the ternary safetensors is scored
-		logf("STAGE 5/6, 6/6  not run (--bisect scores the ternary safetensors only)")
+	if c.noBNZ { // --bisect and a --keep role pass: only the ternary safetensors is scored
+		logf("STAGE 5/6, 6/6  not run (the ternary safetensors is what this pass scores)")
 		noVerify = true
 	} else {
 		logf("STAGE 5/6  BNZ compress -> %s", out)
@@ -1464,14 +1495,21 @@ func run(c runCfg, basePath string, srcArgs []string, out, outTern, outMerged st
 	}
 	// Every output gets its volume (volume.go), from the ternary weights the BNZ holds, beside it as
 	// volume.safetensors: the name Champ's page reads from the model's folder, so the map is always
-	// the served weights'.
+	// the served weights'. The neck pack is not a run-file model. Champ already checked it against
+	// the output config, and that config is what names the heads.
 	if !c.noBNZ {
+		bindServed(bnzSrc, outTern)
 		vol := filepath.Join(filepath.Dir(out), "volume.safetensors")
 		if err := volumes(bnzSrc, vol); err != nil {
 			die("volume: %v", err)
 		}
 		logf("  volume: %s", vol)
 		report["volume"] = vol
+		vf := filepath.Join(filepath.Dir(out), "vocab.float.safetensors")
+		if err := vocabFloat(bnzSrc, vol, vf); err != nil {
+			die("vocab: %v", err)
+		}
+		report["vocab_float"] = vf
 	}
 	if c.signSeed != "" && !c.noBNZ {
 		if err := signBNZ4(c.signSeed, out); err != nil {
@@ -1497,6 +1535,10 @@ func run(c runCfg, basePath string, srcArgs []string, out, outTern, outMerged st
 			verdict = "WORSE than base"
 		}
 		logf("  output ppl %.1f vs base %.1f (x%.2f): %s", ro.PPL, rb.PPL, ro.PPL/rb.PPL, verdict)
+		if c.keepRec != nil {
+			c.keepRec.OutPPL = ro.PPL
+			c.keepRec.Ratio = pplRatio(ro.PPL, c.keepRec.BasePPL)
+		}
 		ev := map[string]any{"base": rb, "output": ro, "ppl_ratio": ro.PPL / rb.PPL, "verdict": verdict}
 		// The page's first answer: its system prompt in chat format (~334 tokens), where the short texts
 		// above do not reach (long-context failures show only here).
@@ -1511,6 +1553,18 @@ func run(c runCfg, basePath string, srcArgs []string, out, outTern, outMerged st
 		logf("  chat (page system prompt, %d tokens) %q: base %q, output %q", n, eval.ChatUser, cb, co)
 		ev["chat"] = map[string]any{"tokens": n, "question": eval.ChatUser, "base": cb, "output": co}
 		report["eval"] = ev
+	} else if c.keepRec != nil {
+		logf("EVAL  output after the keep pass: CPU reference forward, %d prompts, %d texts", len(eval.Prompts), len(eval.Texts))
+		ro, err := eval.Run(outTern, c.keepRec.tok)
+		if err != nil {
+			die("keep: output: %v", err)
+		}
+		logScore("output", ro)
+		c.keepRec.OutPPL = ro.PPL
+		c.keepRec.Ratio = pplRatio(ro.PPL, c.keepRec.BasePPL)
+	}
+	if c.keepRec != nil {
+		report["keep"] = c.keepRec
 	}
 	report["ternarized"], report["kept_base"], report["synth"], report["tensor_secs"] = ternarized, keptBase, synthRep, tensorSecs
 	if limbRep != nil {
@@ -1693,6 +1747,14 @@ func targetsFromConfig(p string) ([]target, int) {
 
 // copyAux copies the base's files set in the run file beside the output under their standard names and
 // returns them as the output's files (the output's config.json is always configFor's).
+// bindServed records the output's files on the checkpoint the BNZ holds.
+func bindServed(held, recorded string) {
+	if held == recorded {
+		return
+	}
+	eval.SetFiles(held, eval.FilesOf(recorded))
+}
+
 func copyAux(basePath, out, tcfg string, report map[string]any) (eval.ModelFiles, error) {
 	bf := eval.FilesOf(basePath)
 	od := filepath.Dir(absP(out))

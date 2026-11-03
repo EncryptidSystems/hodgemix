@@ -115,7 +115,7 @@ Every constant comes from `paper_v2` Appendix A unless a flag overrides it (`par
 | `--repair` | `on` | RMSNorm gains so each channel's spread matches the base on the calibration tokens. |
 | `--base-residual` | `on` | Keep base detail finer than the index. |
 | `--float-dtype` | `bf16` | Storage for embeddings, norms, and other non-ternary tensors. |
-| `--eval` | `on` | Score the base and the output after the write. |
+| `--eval` | `on` | Score the base and the output after the write. The softmax sums the scoring tokenizer's ids, so rows a union vocabulary appended stay out of the perplexity. |
 
 `--rotate on` is refused by preflight: Champ loads a tied head only. Use it only for a runtime that accepts an untied head.
 
@@ -138,6 +138,7 @@ The output's towers are the L-A towers of `transfractal_tensor.tex` (decisions D
 | `--trace BASE OUT [tokenizer.json]` | Residual cosine and the channels that moved, sublayer by sublayer. |
 | `--flow MODEL OUT.safetensors "text"` | Hodge split of the forward cochain. Needs `--config`. |
 | `--bisect` | Mix each role alone, score it, write `OUT.bisect.json`, delete the role files. |
+| `--keep` | Mix each role alone and score it. Keep the role when its perplexity is at most the base's, then mix those roles once into `OUT`. Write `OUT.keep.json`. The score is not an input to the mix. |
 | `--map BASE SRC` | Fit of the shared-vocabulary residual map. |
 | `--ov-chart BASE OUT.ternary.safetensors` | Apply the OV chart to an existing output. |
 | `--surgery BASE OUT.ternary.safetensors [tokenizer.json]` | Surgery in place. |
@@ -179,9 +180,9 @@ Channel matching is still per tensor. A source row is not tied to the base row i
 
 - **Selection.** `train.Align` is Lemma 4.1 of the lattice Riemann–Hilbert note. Certified fibres are copied. Uncertified fibres are the cone centre, the base value (Theorem 8.2 at ρ = 0). The stored row and column maps stay bijections so the channel-map chunk still checks.
 - **Lock.** A mode is locked when its measured phase is already inside the 1/16-turn window. Phases are not integrated.
-- **One Ricci–DeTurck step.** `train.Flow` moves the residual by ∂t f = Δf − c_H Ω² f with time step 1/8. c_H = 2 − 4/ρ² and Ω = 2ρ/(ρ²+|x|²), ρ = 531/40, from the lattice Hardy inequality. A site whose discrete Laplacian reaches the cylinder scale 6/ρ² is capped to the base. The step runs once.
+- **One Ricci–DeTurck step.** The curl residual moves by ∂t f = Δf − c_H Ω² f with time step 1/8. c_H = 2 − 4/ρ² and Ω = 2ρ/(ρ²+|x|²), ρ = 531/40, from the lattice Hardy inequality. A site whose discrete Laplacian reaches the cylinder scale 6/ρ² is capped to the base. The gauge and the harmonic are written back from the assembled grid, so the lock is not a descent direction. The step runs once.
 
-`train.Train` is selection followed by that step, for a grid that is not going through the Hodge split.
+`flowGrid` is that step at the end of every mix. `TrainCurl` is the same step for a raw grid: Align, then the reference keeps the gauge and the harmonic. `train.Train` remains selection followed by one flow of the whole residual, with no Hodge split.
 
 ## Neuromorphic event path
 

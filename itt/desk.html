@@ -1,0 +1,790 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Audit</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #07090d;
+    --ink: #ece7df;
+    --muted: #8e96a3;
+    --faint: #5e6673;
+    --copper: #e8a87c;
+    --line: rgba(232, 168, 124, 0.22);
+    --err: #f0a8a0;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background:
+      radial-gradient(900px 480px at 100% -10%, rgba(232, 168, 124, 0.16), transparent 55%),
+      var(--bg);
+    color: var(--ink);
+    font: 15px/1.5 "Segoe UI", system-ui, sans-serif;
+  }
+  button, textarea, input { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  header {
+    height: 58px; display: flex; align-items: center; gap: 14px;
+    padding: 0 22px; border-bottom: 1px solid rgba(255,255,255,0.06);
+    background: rgba(7, 9, 13, 0.72);
+  }
+  .logo { letter-spacing: 0.18em; font-size: 12px; font-weight: 700; color: var(--copper); }
+  .product { font-size: 16px; font-weight: 650; }
+  .app { display: grid; grid-template-columns: 300px minmax(0, 1fr); height: calc(100% - 58px); }
+  aside {
+    border-right: 1px solid rgba(255,255,255,0.06);
+    padding: 18px 16px; overflow: auto;
+    background: rgba(8, 10, 14, 0.45);
+  }
+  main { overflow: auto; min-width: 0; }
+  h1 { font-size: 1.15rem; font-weight: 650; margin: 0 0 0.35rem; }
+  p.lead, .note { margin: 0 0 1rem; color: var(--muted); font-size: 13px; }
+  form { margin: 0 0 1rem; }
+  label { display: block; font-weight: 600; margin-bottom: 0.3rem; font-size: 13px; }
+  input[type="text"], textarea {
+    width: 100%; background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.12); border-radius: 10px;
+    padding: 0.45rem 0.55rem;
+  }
+  textarea { min-height: 7rem; resize: vertical; }
+  aside button, button[type="submit"] {
+    margin-top: 0.55rem; border: 1px solid var(--line); border-radius: 12px;
+    padding: 0.45rem 0.8rem; font-weight: 650; color: #ffe8d4;
+    background: linear-gradient(180deg, rgba(232,168,124,0.2), rgba(232,168,124,0.05));
+  }
+  input[type="file"] { margin-top: 0.3rem; font-size: 13px; }
+  .err { color: var(--err); white-space: pre-wrap; }
+  .id { font-family: ui-monospace, Consolas, monospace; font-size: 12px; word-break: break-all; color: var(--muted); }
+  .kicker { color: var(--faint); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; }
+  .map {
+    display: flex; flex-direction: column; min-height: 460px; height: 52vh;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    background: rgba(8, 10, 14, 0.55);
+  }
+  .map-bar {
+    display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px;
+    padding: 12px 14px 4px;
+  }
+  .map-bar .kicker { flex-basis: 100%; }
+  #model-meta, #chain-meta, #corpus-meta { margin-left: auto; color: var(--muted); font-size: 12px; text-align: right; }
+  .map canvas { flex: 1; width: 100%; min-height: 0; display: block; cursor: crosshair; }
+  .hodge { display: flex; height: 8px; border-radius: 99px; overflow: hidden; background: rgba(255,255,255,0.06); margin: 8px 0; }
+  .hodge i { display: block; height: 100%; }
+  .hodge .g { background: #e8a87c; }
+  .hodge .c { background: #7eb6e8; }
+  .hodge .h { background: #ece7df; }
+  ol { padding-left: 1.2rem; margin: 0.4rem 0 0; color: var(--muted); font-size: 13px; }
+  li { margin: 0.1rem 0; }
+  @media (max-width: 860px) {
+    .app { grid-template-columns: 1fr; height: auto; }
+    aside { border-right: 0; border-bottom: 1px solid rgba(255,255,255,0.06); }
+    .map { height: 70vh; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <span class="logo">ENCRYPTID</span>
+  <span class="product">Audit</span>
+</header>
+<div class="app">
+<aside>
+  <h1>Audit a text</h1>
+  <p class="lead">The model is mounted with this deployment. A text is placed on its cells. The line between two texts is the difference of their cochains.</p>
+  <form id="ask">
+    <label for="text">Text</label>
+    <textarea id="text" placeholder="Text to audit"></textarea>
+    <button type="submit">Audit text</button>
+  </form>
+  <form id="corpus-form">
+    <label for="files">Corpus</label>
+    <input id="files" type="file" accept=".txt,text/plain" multiple>
+    <button type="button" id="add-work">Add the text above</button>
+    <button type="button" id="map-corpus">Map corpus</button>
+    <ol id="corpus-works"></ol>
+  </form>
+  <p id="corpus-note" class="note"></p>
+  <p id="err" class="err" hidden></p>
+  <section id="readout" hidden>
+    <p class="kicker">Cochain of this text</p>
+    <p class="id" id="sha"></p>
+    <p id="hodge-num" class="note"></p>
+    <div class="hodge" id="hodge" title="Hodge energy of the top cochain. Copper is gradient, blue is curl, white is harmonic."><i class="g"></i><i class="c"></i><i class="h"></i></div>
+    <ol id="words"></ol>
+  </section>
+</aside>
+<main>
+  <section class="map" id="model" hidden aria-label="Instrumented Tensor Transformer">
+    <div class="map-bar">
+      <span class="kicker">Instrumented Tensor Transformer</span>
+      <span id="model-meta" aria-live="polite"></span>
+    </div>
+    <canvas id="model-canvas" aria-label="Resting cell currents of the model"></canvas>
+  </section>
+  <section class="map" id="corpus" hidden aria-label="Corpus map">
+    <div class="map-bar">
+      <span class="kicker">Corpus</span>
+      <span id="corpus-meta" aria-live="polite"></span>
+    </div>
+    <canvas id="corpus-canvas" aria-label="Each text and the cochain difference to the next"></canvas>
+  </section>
+  <section class="map" id="chain" hidden aria-label="Sub-topology of the submitted text">
+    <div class="map-bar">
+      <span class="kicker">Sub-topology</span>
+      <span id="chain-meta" aria-live="polite"></span>
+    </div>
+    <canvas id="chain-canvas" aria-label="Word anchors and the top cochain"></canvas>
+  </section>
+</main>
+</div>
+<script>
+const WARM = "232,168,124";
+const COOL = "126,182,232";
+const err = document.getElementById("err");
+const modelEl = document.getElementById("model");
+const chainEl = document.getElementById("chain");
+const modelCanvas = document.getElementById("model-canvas");
+const chainCanvas = document.getElementById("chain-canvas");
+const corpusEl = document.getElementById("corpus");
+const corpusCanvas = document.getElementById("corpus-canvas");
+const modelCtx = modelCanvas.getContext("2d");
+const chainCtx = chainCanvas.getContext("2d");
+const corpusCtx = corpusCanvas.getContext("2d");
+let corpusWorks = [];
+let corpusView = null;
+let corpusPin = 0;
+
+const EDGES = [
+  { name: "q", a: "D", b: "Q", vol: "balance.q" },
+  { name: "k", a: "D", b: "KV", vol: "balance.k" },
+  { name: "v", a: "D", b: "KV", vol: "balance.v" },
+  { name: "o", a: "Q", b: "Dout", vol: "balance.o" },
+  { name: "gate", a: "D", b: "F", vol: "balance.gate" },
+  { name: "up", a: "D", b: "F", vol: "balance.up" },
+  { name: "down", a: "F", b: "Dout", vol: "balance.down" },
+];
+
+let vol = null;
+let counts = null;
+let layers = 0;
+let layer = 0;
+let energy = null;
+let chain = null;
+let pin = 0;
+
+function fail(e) {
+  err.hidden = false;
+  err.textContent = e && e.message ? e.message : String(e);
+  document.getElementById("readout").hidden = true;
+  chainEl.hidden = true;
+  chain = null;
+}
+
+function parseSafetensors(buf) {
+  const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength);
+  const n = Number(dv.getBigUint64(0, true));
+  const header = JSON.parse(new TextDecoder().decode(buf.subarray(8, 8 + n)));
+  const base = 8 + n;
+  const map = new Map();
+  for (const [name, meta] of Object.entries(header)) {
+    if (!meta || !meta.shape || !meta.data_offsets) continue;
+    const [a, b] = meta.data_offsets;
+    const off = buf.byteOffset + base + a;
+    const count = (b - a) / 4;
+    map.set(name, {
+      shape: meta.shape,
+      data: meta.dtype === "F32" ? new Float32Array(buf.buffer, off, count) : null,
+    });
+  }
+  return map;
+}
+
+function strongest(m, n) {
+  const heap = [];
+  for (let i = 0; i < m.data.length; i++) {
+    const v = m.data[i];
+    const a = Math.abs(v);
+    if (a === 0) continue;
+    const item = { v, a, r: (i / m.cols) | 0, c: i % m.cols };
+    if (heap.length < n) { heap.push(item); continue; }
+    let min = 0;
+    for (let k = 1; k < heap.length; k++) if (heap[k].a < heap[min].a) min = k;
+    if (a > heap[min].a) heap[min] = item;
+  }
+  return heap;
+}
+
+function matrix(l, edge) {
+  const t = vol && vol.get(edge.vol);
+  if (!t || !t.data) return null;
+  const [, rows, cols] = t.shape;
+  const n = rows * cols;
+  return { rows, cols, data: t.data.subarray(l * n, (l + 1) * n) };
+}
+
+function layerEnergy(l) {
+  let s = 0;
+  for (const e of EDGES) {
+    const m = matrix(l, e);
+    if (!m) continue;
+    for (let i = 0; i < m.data.length; i++) s += Math.abs(m.data[i]);
+  }
+  return s;
+}
+
+function mountVolume(bytes) {
+  vol = parseSafetensors(bytes);
+  const q = vol.get("balance.q");
+  const k = vol.get("balance.k");
+  const g = vol.get("balance.gate");
+  if (!q || !k || !g || !q.data) {
+    document.getElementById("model-meta").textContent = "This volume has no cell map.";
+    counts = null;
+    return;
+  }
+  layers = q.shape[0];
+  counts = { D: q.shape[2], Q: q.shape[1], KV: k.shape[1], F: g.shape[1], Dout: q.shape[2] };
+  energy = new Float32Array(layers);
+  let best = 0;
+  layer = 0;
+  for (let i = 0; i < layers; i++) {
+    energy[i] = layerEnergy(i);
+    if (energy[i] > best) { best = energy[i]; layer = i; }
+  }
+  sayModel();
+  drawModel();
+  requestAnimationFrame(drawModel);
+}
+
+function sayModel() {
+  document.getElementById("model-meta").textContent =
+    "L" + layer + " · " + counts.D + " D · " + counts.Q + " Q · " + counts.KV + " KV · " + counts.F + " F";
+}
+
+function drawModel() {
+  if (!counts) return;
+  const cssW = modelEl.clientWidth;
+  const cssH = modelCanvas.clientHeight || modelEl.clientHeight - 36;
+  if (!cssW || !cssH) return;
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  modelCanvas.width = Math.round(cssW * dpr);
+  modelCanvas.height = Math.round(cssH * dpr);
+  const ctx = modelCtx;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cssW, cssH);
+
+  const rail = 18;
+  const top = 22;
+  const bot = cssH - 16;
+  const span = Math.max(1, bot - top);
+  const xOf = (name) => {
+    const f = { D: 0.14, Q: 0.40, KV: 0.40, F: 0.68, Dout: 0.90 }[name];
+    return rail + 8 + f * (cssW - rail - 16);
+  };
+  const band = (name) => name === "Q" ? [top, top + span * 0.58] : name === "KV" ? [top + span * 0.70, bot] : [top, bot];
+  const cols = {};
+  for (const name of ["D", "Q", "KV", "F", "Dout"]) {
+    const [y0, y1] = band(name);
+    const n = counts[name];
+    cols[name] = [];
+    for (let i = 0; i < n; i++) {
+      const t = n === 1 ? 0.5 : i / (n - 1);
+      cols[name].push({ x: xOf(name), y: y0 + t * (y1 - y0) });
+    }
+  }
+  const maxE = energy ? Math.max(...energy, 1e-12) : 1;
+  for (let i = 0; i < layers; i++) {
+    const y0 = (i / layers) * cssH;
+    const h = cssH / layers;
+    const hot = energy ? energy[i] / maxE : 0;
+    ctx.fillStyle = i === layer ? "rgba(232,168,124,0.95)" : "rgba(232,168,124," + (0.15 + 0.7 * hot) + ")";
+    ctx.fillRect(4, y0 + 1, 6, Math.max(2, h - 2));
+  }
+  ctx.font = "11px Segoe UI, system-ui, sans-serif";
+  ctx.fillStyle = "#8e96a3";
+  ctx.textAlign = "center";
+  ctx.fillText("D", xOf("D"), 14);
+  ctx.fillText("Q", xOf("Q"), 14);
+  ctx.fillText("F", xOf("F"), 14);
+  ctx.fillText("D′", xOf("Dout"), 14);
+  const kv = band("KV");
+  ctx.fillText("KV", xOf("KV"), kv[0] - 4);
+
+  const picked = [];
+  let edgeMax = 1e-12;
+  for (const e of EDGES) {
+    const m = matrix(layer, e);
+    if (!m) continue;
+    const take = strongest(m, 70);
+    for (const p of take) edgeMax = Math.max(edgeMax, Math.abs(p.v));
+    picked.push([e, take]);
+  }
+  for (const [e, take] of picked) {
+    for (const p of take) {
+      const from = cols[e.a][p.c];
+      const to = cols[e.b][p.r];
+      if (!from || !to) continue;
+      const mag = Math.abs(p.v) / edgeMax;
+      ctx.strokeStyle = p.v >= 0 ? "rgba(" + WARM + "," + (0.15 + 0.8 * mag) + ")" : "rgba(" + COOL + "," + (0.15 + 0.8 * mag) + ")";
+      ctx.lineWidth = 0.6 + 1.6 * mag;
+      ctx.beginPath();
+      ctx.moveTo(from.x, from.y);
+      ctx.lineTo(to.x, to.y);
+      ctx.stroke();
+    }
+  }
+  for (const name of ["D", "Q", "KV", "F", "Dout"]) {
+    for (const p of cols[name]) {
+      ctx.fillStyle = "rgba(236,231,223,0.85)";
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 1.8, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+}
+
+function topOf(row, n) {
+  const heap = [];
+  for (let i = 0; i < row.length; i++) {
+    const v = row[i];
+    const a = Math.abs(v);
+    if (!a) continue;
+    const item = { i, v, a };
+    if (heap.length < n) { heap.push(item); continue; }
+    let min = 0;
+    for (let k = 1; k < heap.length; k++) if (heap[k].a < heap[min].a) min = k;
+    if (a > heap[min].a) heap[min] = item;
+  }
+  heap.sort((p, q) => q.a - p.a);
+  return heap;
+}
+
+function sayChain() {
+  const meta = document.getElementById("chain-meta");
+  if (!chain) { meta.textContent = ""; return; }
+  const w = chain.words[pin];
+  const anchor = topOf(chain.anchors[pin], 3).map((p) => "c" + p.i + " " + p.v).join(", ");
+  let edge = "";
+  if (chain.words.length > 1 && pin < chain.top.length) {
+    edge = " · edge " + topOf(chain.top[pin], 3).map((p) => "c" + p.i + " " + p.v).join(", ");
+  }
+  const kind = chain.words.length < 2 ? "The top cochain is this anchor." : "Lines are the next anchor minus this one.";
+  meta.textContent = (w ? w.text : "") + " · " + anchor + edge + " · " + kind;
+}
+
+function chainGeom(spec, cssW, cssH) {
+  const nW = spec.anchors.length;
+  const nC = spec.anchors[0].length;
+  const rail = 28;
+  const top = 28;
+  const bot = cssH - 36;
+  const xOf = (i) => {
+    const t = nW === 1 ? 0.5 : i / (nW - 1);
+    return rail + 16 + t * Math.max(1, cssW - rail - 32);
+  };
+  const yOf = (g) => {
+    const t = nC === 1 ? 0.5 : g / (nC - 1);
+    return top + t * Math.max(1, bot - top);
+  };
+  return { nW, nC, rail, top, bot, xOf, yOf };
+}
+
+function drawChain() {
+  if (!chain) return;
+  const cssW = chainEl.clientWidth;
+  const cssH = chainCanvas.clientHeight || chainEl.clientHeight - 36;
+  if (!cssW || !cssH) return;
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  chainCanvas.width = Math.round(cssW * dpr);
+  chainCanvas.height = Math.round(cssH * dpr);
+  const ctx = chainCtx;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cssW, cssH);
+  const g = chainGeom(chain, cssW, cssH);
+
+  for (let i = 0; i < g.nW; i++) {
+    const y0 = (i / g.nW) * cssH;
+    const h = cssH / g.nW;
+    ctx.fillStyle = i === pin ? "rgba(232,168,124,0.95)" : "rgba(232,168,124,0.28)";
+    ctx.fillRect(4, y0 + 1, 6, Math.max(2, h - 2));
+  }
+
+  let edgeMax = 1e-12;
+  const picked = [];
+  if (g.nW > 1) {
+    for (let i = 0; i < g.nW - 1; i++) {
+      const row = chain.top[i];
+      const take = topOf(row, 28);
+      for (const p of take) edgeMax = Math.max(edgeMax, p.a);
+      picked.push(take);
+    }
+    for (let i = 0; i < picked.length; i++) {
+      for (const p of picked[i]) {
+        const mag = p.a / edgeMax;
+        ctx.strokeStyle = p.v >= 0 ? "rgba(" + WARM + "," + (0.18 + 0.75 * mag) + ")" : "rgba(" + COOL + "," + (0.18 + 0.75 * mag) + ")";
+        ctx.lineWidth = 0.7 + 2.2 * mag;
+        ctx.beginPath();
+        ctx.moveTo(g.xOf(i), g.yOf(p.i));
+        ctx.lineTo(g.xOf(i + 1), g.yOf(p.i));
+        ctx.stroke();
+      }
+    }
+  }
+
+  for (let i = 0; i < g.nW; i++) {
+    const row = chain.anchors[i];
+    let max = 1e-12;
+    for (const v of row) max = Math.max(max, Math.abs(v));
+    for (let c = 0; c < g.nC; c++) {
+      const v = row[c];
+      const mag = Math.abs(v) / max;
+      const r = 1.5 + 3.4 * mag;
+      ctx.fillStyle = v >= 0 ? "rgba(" + WARM + "," + (0.35 + 0.65 * mag) + ")" : "rgba(" + COOL + "," + (0.35 + 0.65 * mag) + ")";
+      ctx.beginPath();
+      ctx.arc(g.xOf(i), g.yOf(c), i === pin ? r + 0.6 : r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  ctx.font = "11px Segoe UI, system-ui, sans-serif";
+  ctx.fillStyle = "#8e96a3";
+  ctx.textAlign = "center";
+  const step = Math.max(1, Math.ceil(g.nW / Math.max(1, Math.floor(cssW / 72))));
+  for (let i = 0; i < g.nW; i++) {
+    if (i !== pin && i % step !== 0 && i !== g.nW - 1) continue;
+    const label = chain.words[i].text;
+    ctx.fillStyle = i === pin ? "#e8a87c" : "#8e96a3";
+    ctx.fillText(label.length > 14 ? label.slice(0, 13) + "…" : label, g.xOf(i), cssH - 12);
+  }
+  ctx.textAlign = "left";
+  ctx.fillStyle = "#5e6673";
+  for (let c = 0; c < g.nC; c += Math.max(1, Math.round(g.nC / 8))) {
+    ctx.fillText(String(c), 14, g.yOf(c) + 3);
+  }
+}
+
+function showChain(j) {
+  chain = j;
+  pin = 0;
+  const readout = document.getElementById("readout");
+  readout.hidden = false;
+  chainEl.hidden = false;
+  document.getElementById("sha").textContent = j.sha256;
+  const [G, C, H] = j.hodge;
+  document.getElementById("hodge-num").textContent =
+    "Hodge energy of the top cochain   G " + G.toExponential(3) +
+    "   C " + C.toExponential(3) +
+    "   H " + H.toExponential(3);
+  const sum = Math.abs(G) + Math.abs(C) + Math.abs(H) || 1;
+  const bar = document.getElementById("hodge");
+  bar.children[0].style.width = (100 * Math.abs(G) / sum) + "%";
+  bar.children[1].style.width = (100 * Math.abs(C) / sum) + "%";
+  bar.children[2].style.width = (100 * Math.abs(H) / sum) + "%";
+  const ol = document.getElementById("words");
+  ol.textContent = "";
+  j.words.forEach((w, i) => {
+    const li = document.createElement("li");
+    li.textContent = w.text;
+    li.style.cursor = "pointer";
+    li.onclick = () => { pin = i; sayChain(); drawChain(); };
+    ol.append(li);
+  });
+  sayChain();
+  requestAnimationFrame(() => { drawChain(); sayChain(); });
+}
+
+modelCanvas.addEventListener("click", (ev) => {
+  if (!layers) return;
+  const rect = modelCanvas.getBoundingClientRect();
+  const x = ev.clientX - rect.left;
+  if (x > 22) return;
+  layer = Math.min(layers - 1, Math.max(0, Math.floor((ev.clientY - rect.top) / rect.height * layers)));
+  sayModel();
+  drawModel();
+});
+
+chainCanvas.addEventListener("click", (ev) => {
+  if (!chain) return;
+  const rect = chainCanvas.getBoundingClientRect();
+  const x = ev.clientX - rect.left;
+  const y = ev.clientY - rect.top;
+  if (x < 22) {
+    pin = Math.min(chain.words.length - 1, Math.max(0, Math.floor(y / rect.height * chain.words.length)));
+  } else {
+    const g = chainGeom(chain, rect.width, rect.height);
+    let best = 0, dist = Infinity;
+    for (let i = 0; i < g.nW; i++) {
+      const d = Math.abs(g.xOf(i) - x);
+      if (d < dist) { dist = d; best = i; }
+    }
+    pin = best;
+  }
+  sayChain();
+  drawChain();
+});
+
+chainCanvas.addEventListener("mousemove", (ev) => {
+  if (!chain) return;
+  const rect = chainCanvas.getBoundingClientRect();
+  const x = ev.clientX - rect.left;
+  const y = ev.clientY - rect.top;
+  const g = chainGeom(chain, rect.width, rect.height);
+  let wi = 0, wd = Infinity;
+  for (let i = 0; i < g.nW; i++) {
+    const d = Math.abs(g.xOf(i) - x);
+    if (d < wd) { wd = d; wi = i; }
+  }
+  let ci = 0, cd = Infinity;
+  for (let c = 0; c < g.nC; c++) {
+    const d = Math.abs(g.yOf(c) - y);
+    if (d < cd) { cd = d; ci = c; }
+  }
+  const word = chain.words[wi].text;
+  const anchor = chain.anchors[wi][ci];
+  let edge = "";
+  if (g.nW > 1 && wi < chain.top.length) edge = " · edge " + chain.top[wi][ci];
+  document.getElementById("chain-meta").textContent =
+    word + " · cell " + ci + " · anchor " + anchor + edge;
+});
+chainCanvas.addEventListener("mouseleave", sayChain);
+
+function fmt(v) {
+  const a = Math.abs(v);
+  if (a !== 0 && (a >= 1000 || a < 0.001)) return v.toExponential(3);
+  return String(Math.round(v * 1000) / 1000);
+}
+
+function sayCorpus() {
+  const meta = document.getElementById("corpus-meta");
+  if (!corpusView) { meta.textContent = ""; return; }
+  const name = corpusView.words[corpusPin].text;
+  const sha = corpusView.shas[corpusPin].slice(0, 12);
+  const edge = corpusView.edges[corpusPin];
+  if (!edge) {
+    meta.textContent = name + " · " + sha + " · add another text to compare";
+    return;
+  }
+  const next = corpusView.words[edge.to].text;
+  if (edge.same) {
+    meta.textContent = name + " is the same cochain as " + next + " · " + sha;
+    return;
+  }
+  const cells = topOf(edge.cells, 3).map((p) => "c" + p.i + " " + fmt(p.v)).join(", ");
+  const totals = edge.l1 === 0 ? "different chain, same cell totals" : "L1 " + fmt(edge.l1);
+  meta.textContent = name + " differs from " + next + " · " + totals + " · " + cells + " · " + sha;
+}
+
+function drawCorpus() {
+  if (!corpusView) return;
+  const cssW = corpusEl.clientWidth;
+  const cssH = corpusCanvas.clientHeight || corpusEl.clientHeight - 36;
+  if (!cssW || !cssH) return;
+  drawCorpusCanvas(cssW, cssH);
+}
+
+function drawCorpusCanvas(cssW, cssH) {
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  corpusCanvas.width = Math.round(cssW * dpr);
+  corpusCanvas.height = Math.round(cssH * dpr);
+  const ctx = corpusCtx;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cssW, cssH);
+  const g = chainGeom(corpusView, cssW, cssH);
+  for (let i = 0; i < g.nW; i++) {
+    const y0 = (i / g.nW) * cssH;
+    const h = cssH / g.nW;
+    const sameNext = corpusView.edges[i] && corpusView.edges[i].same;
+    ctx.fillStyle = i === corpusPin ? "rgba(232,168,124,0.95)" : sameNext ? "rgba(236,231,223,0.35)" : "rgba(232,168,124,0.45)";
+    ctx.fillRect(4, y0 + 1, 6, Math.max(2, h - 2));
+  }
+  let edgeMax = 1e-12;
+  const picked = [];
+  for (let i = 0; i < g.nW - 1; i++) {
+    const take = topOf(corpusView.top[i], 28);
+    for (const p of take) edgeMax = Math.max(edgeMax, p.a);
+    picked.push(take);
+  }
+  for (let i = 0; i < picked.length; i++) {
+    if (corpusView.edges[i].same) continue;
+    for (const p of picked[i]) {
+      const mag = p.a / edgeMax;
+      ctx.strokeStyle = p.v >= 0 ? "rgba(" + WARM + "," + (0.18 + 0.75 * mag) + ")" : "rgba(" + COOL + "," + (0.18 + 0.75 * mag) + ")";
+      ctx.lineWidth = 0.7 + 2.2 * mag;
+      ctx.beginPath();
+      ctx.moveTo(g.xOf(i), g.yOf(p.i));
+      ctx.lineTo(g.xOf(i + 1), g.yOf(p.i));
+      ctx.stroke();
+    }
+  }
+  for (let i = 0; i < g.nW; i++) {
+    const row = corpusView.anchors[i];
+    let max = 1e-12;
+    for (const v of row) max = Math.max(max, Math.abs(v));
+    for (let c = 0; c < g.nC; c++) {
+      const v = row[c];
+      const mag = Math.abs(v) / max;
+      ctx.fillStyle = v >= 0 ? "rgba(" + WARM + "," + (0.35 + 0.65 * mag) + ")" : "rgba(" + COOL + "," + (0.35 + 0.65 * mag) + ")";
+      ctx.beginPath();
+      ctx.arc(g.xOf(i), g.yOf(c), i === corpusPin ? 1.6 + 3.4 * mag : 1.4 + 2.6 * mag, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  ctx.font = "11px Segoe UI, system-ui, sans-serif";
+  ctx.textAlign = "center";
+  const step = Math.max(1, Math.ceil(g.nW / Math.max(1, Math.floor(cssW / 72))));
+  for (let i = 0; i < g.nW; i++) {
+    if (i !== corpusPin && i % step !== 0 && i !== g.nW - 1) continue;
+    ctx.fillStyle = i === corpusPin ? "#e8a87c" : "#8e96a3";
+    const label = corpusView.words[i].text;
+    ctx.fillText(label.length > 16 ? label.slice(0, 15) + "…" : label, g.xOf(i), cssH - 12);
+  }
+  ctx.textAlign = "left";
+  ctx.fillStyle = "#5e6673";
+  for (let c = 0; c < g.nC; c += Math.max(1, Math.round(g.nC / 8))) {
+    ctx.fillText(String(c), 14, g.yOf(c) + 3);
+  }
+}
+
+function listWorks() {
+  const ol = document.getElementById("corpus-works");
+  ol.textContent = "";
+  corpusWorks.forEach((w, i) => {
+    const li = document.createElement("li");
+    li.textContent = w.name;
+    li.style.cursor = "pointer";
+    li.onclick = () => { corpusPin = i; sayCorpus(); drawCorpus(); openWork(i); };
+    ol.append(li);
+  });
+}
+
+async function openWork(i) {
+  const w = corpusWorks[i];
+  if (!w) return;
+  const r = await fetch("/api/text", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ text: w.text }),
+  });
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  showChain(j);
+}
+
+function showCorpus(j) {
+  corpusView = {
+    words: j.works.map((w) => ({ text: w.name })),
+    anchors: j.works.map((w) => w.cells),
+    top: (j.edges || []).map((e) => e.cells),
+    edges: j.edges || [],
+    shas: j.works.map((w) => w.sha256),
+  };
+  corpusPin = 0;
+  corpusEl.hidden = false;
+  const note = document.getElementById("corpus-note");
+  const different = (j.edges || []).filter((e) => !e.same).length;
+  const same = (j.edges || []).filter((e) => e.same).length;
+  note.textContent = j.works.length + " texts"
+    + (j.edges && j.edges.length ? " · " + different + " differ · " + same + " same" : "");
+  sayCorpus();
+  requestAnimationFrame(() => { drawCorpus(); sayCorpus(); });
+}
+
+corpusCanvas.addEventListener("click", (ev) => {
+  if (!corpusView) return;
+  const rect = corpusCanvas.getBoundingClientRect();
+  const x = ev.clientX - rect.left;
+  const y = ev.clientY - rect.top;
+  if (x < 22) {
+    corpusPin = Math.min(corpusView.words.length - 1, Math.max(0, Math.floor(y / rect.height * corpusView.words.length)));
+  } else {
+    const g = chainGeom(corpusView, rect.width, rect.height);
+    let best = 0, dist = Infinity;
+    for (let i = 0; i < g.nW; i++) {
+      const d = Math.abs(g.xOf(i) - x);
+      if (d < dist) { dist = d; best = i; }
+    }
+    corpusPin = best;
+  }
+  sayCorpus();
+  drawCorpus();
+  openWork(corpusPin).catch(fail);
+});
+corpusCanvas.addEventListener("mouseleave", sayCorpus);
+
+new ResizeObserver(() => { drawModel(); drawCorpus(); drawChain(); }).observe(document.querySelector("main"));
+
+async function loadVolume() {
+  modelEl.hidden = false;
+  document.getElementById("model-meta").textContent = "Reading the instrumented volume…";
+  const vr = await fetch("/api/volume");
+  if (!vr.ok) {
+    counts = null;
+    const t = await vr.text();
+    document.getElementById("model-meta").textContent = t;
+    throw new Error(t);
+  }
+  mountVolume(new Uint8Array(await vr.arrayBuffer()));
+}
+
+document.getElementById("ask").onsubmit = async (e) => {
+  e.preventDefault();
+  err.hidden = true;
+  try {
+    const r = await fetch("/api/text", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ text: document.getElementById("text").value }),
+    });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || r.statusText);
+    showChain(j);
+  } catch (e) { fail(e); }
+};
+
+document.getElementById("files").onchange = async (ev) => {
+  const files = [...ev.target.files];
+  for (const f of files) {
+    corpusWorks.push({ name: f.name, text: await f.text() });
+  }
+  ev.target.value = "";
+  listWorks();
+};
+
+document.getElementById("add-work").onclick = () => {
+  const text = document.getElementById("text").value;
+  if (!text.trim()) { fail(new Error("text is empty")); return; }
+  err.hidden = true;
+  const n = corpusWorks.length + 1;
+  const name = text.trim().split(/\s+/).slice(0, 4).join(" ");
+  corpusWorks.push({ name: name || ("text " + n), text });
+  listWorks();
+};
+
+document.getElementById("map-corpus").onclick = async () => {
+  err.hidden = true;
+  if (!corpusWorks.length) { fail(new Error("Add a text to the corpus.")); return; }
+  document.getElementById("corpus-note").textContent = "Mapping " + corpusWorks.length + " texts…";
+  try {
+    const r = await fetch("/api/corpus", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ works: corpusWorks }),
+    });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || r.statusText);
+    showCorpus(j);
+    await openWork(0);
+  } catch (e) {
+    document.getElementById("corpus-note").textContent = "";
+    fail(e);
+  }
+};
+
+loadVolume().catch(fail);
+</script>
+</body>
+</html>

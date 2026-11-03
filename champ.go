@@ -59,6 +59,7 @@ func champCheck(stPath, cfgPath string) (bad, notes []string) {
 	if err != nil {
 		return []string{err.Error()}, nil
 	}
+	defer st.Close()
 	cfg := map[string]any{}
 	b, err := os.ReadFile(cfgPath)
 	if err != nil {

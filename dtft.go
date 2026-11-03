@@ -955,8 +955,9 @@ func synthD(ents []Entry, G [2]int, sp SynthParams) ([]float64, SynthRec) {
 		D.Merged++
 	}
 	// Eq.(19) leaves an unlocked band bin with the base. The curl residual stays.
-	// flowGrid is the Hardy control on it: one Ricci–DeTurck step, and a site
-	// whose discrete Laplacian reaches 6/ρ² is capped back to the base.
+	// flowGrid trains that curl with one Ricci–DeTurck step and writes the
+	// assembled gauge and the locked harmonic back. A site whose discrete
+	// Laplacian reaches 6/ρ² is capped to the base.
 	// Replacing out with ref here made that step a no-op, so an unlocked Llama
 	// tensor shipped as the base.
 	if D.Merged == 0 {

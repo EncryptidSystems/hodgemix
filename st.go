@@ -381,13 +381,48 @@ func (w *STW) Patch(k string, b []byte) error {
 
 // Paper: no equation (helper: I/O, progress or utility)
 func (w *STW) Add(k, dtype string, shape []int, b []byte) {
+	tw := w.Append(k, dtype, shape)
+	_, _ = tw.Write(b)
+}
+
+// Append starts tensor k. Bytes written to the result are the tensor. The next
+// Add or Append begins the following tensor.
+func (w *STW) Append(k, dtype string, shape []int) io.Writer {
 	if shape == nil {
 		shape = []int{}
 	}
 	w.keys = append(w.keys, k)
-	w.h[k] = TInfo{dtype, shape, []int64{w.off, w.off + int64(len(b))}}
-	w.bw.Write(b)
-	w.off += int64(len(b))
+	w.h[k] = TInfo{dtype, shape, []int64{w.off, w.off}}
+	return &tensorWriter{w: w, k: k}
+}
+
+type tensorWriter struct {
+	w *STW
+	k string
+}
+
+func (t *tensorWriter) Write(b []byte) (int, error) {
+	if _, err := t.w.bw.Write(b); err != nil {
+		return 0, err
+	}
+	t.w.off += int64(len(b))
+	inf := t.w.h[t.k]
+	inf.Off[1] = t.w.off
+	t.w.h[t.k] = inf
+	return len(b), nil
+}
+
+// Abort drops a writer that will not be closed.
+func (w *STW) Abort() {
+	if w.tmp == nil {
+		return
+	}
+	_ = w.tmp.Close()
+	_ = os.Remove(w.tmp.Name())
+	tempMu.Lock()
+	delete(tempFiles, w.tmp.Name())
+	tempMu.Unlock()
+	w.tmp = nil
 }
 
 // Paper: no equation (helper: I/O, progress or utility)

@@ -7,7 +7,7 @@ package main
 //	  model: C:\models\Llama-3.2-1B\model.safetensors   # or a list: one model's shards
 //	  tokenizer: C:\models\Llama-3.2-1B\tokenizer.json
 //	  tokenizer_config: C:\models\Llama-3.2-1B\tokenizer_config.json
-//	  config: C:\models\Llama-3.2-1B\config.json
+//	  config: C:\models\Llama-3.2-1B\config.json        # required on base, every source, and every models entry
 //	  special_tokens_map: ...                           # optional, copied beside the output
 //	  generation_config: ...                            # optional, copied beside the output
 //	sources:
@@ -42,7 +42,7 @@ type runEntry struct {
 	Weight           *float64 `yaml:"weight,omitempty"`
 	Tokenizer        string   `yaml:"tokenizer,omitempty"`
 	TokenizerConfig  string   `yaml:"tokenizer_config,omitempty"`
-	Config           string   `yaml:"config,omitempty"`
+	Config           string   `yaml:"config"`
 	SpecialTokensMap string   `yaml:"special_tokens_map,omitempty"`
 	GenerationConfig string   `yaml:"generation_config,omitempty"`
 }
@@ -78,6 +78,9 @@ func (e *runEntry) register(dir, what string) (string, error) {
 	}
 	if len(shards) == 0 || shards[0] == "" {
 		return "", fmt.Errorf("%s: no model", what)
+	}
+	if e.Config == "" {
+		return "", fmt.Errorf("%s: no config set (run file: config)", what)
 	}
 	for i := range shards {
 		shards[i] = abs(shards[i])
@@ -157,11 +160,33 @@ func loadRunFile(path string) ([]string, error) {
 	return args, nil
 }
 
-// writeRunFile writes path, a run file whose models entry is the output's files, for the probe
-// commands (hodgemix --config OUT.yaml --score OUT.ternary.safetensors).
-func writeRunFile(path, model string, f eval.ModelFiles) error {
-	b, err := yaml.Marshal(runFile{Models: []runEntry{{Model: model, Tokenizer: f.Tokenizer, TokenizerConfig: f.TokenizerConfig,
-		Config: f.Config, SpecialTokensMap: f.SpecialTokensMap, GenerationConfig: f.GenerationConfig}}})
+// runEntryOf is one safetensors checkpoint and the files set for it. Config is the config.json
+// the run wrote or was given.
+func runEntryOf(model string, f eval.ModelFiles) runEntry {
+	return runEntry{Model: model, Tokenizer: f.Tokenizer, TokenizerConfig: f.TokenizerConfig,
+		Config: f.Config, SpecialTokensMap: f.SpecialTokensMap, GenerationConfig: f.GenerationConfig}
+}
+
+// writeRunFile writes path, a run file whose models entries are the safetensors to run, each with
+// its config. The first entry is the checkpoint the run serves.
+func writeRunFile(path string, models []runEntry) error {
+	if len(models) == 0 {
+		return fmt.Errorf("%s: no model", path)
+	}
+	for i := range models {
+		if models[i].Config == "" {
+			return fmt.Errorf("%s: models[%d]: no config set (run file: config)", path, i)
+		}
+		switch m := models[i].Model.(type) {
+		case string:
+			if m == "" {
+				return fmt.Errorf("%s: models[%d]: no model", path, i)
+			}
+		default:
+			return fmt.Errorf("%s: models[%d]: no model", path, i)
+		}
+	}
+	b, err := yaml.Marshal(runFile{Models: models})
 	if err != nil {
 		return err
 	}

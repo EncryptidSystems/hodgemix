@@ -96,10 +96,12 @@ func surgeryWith(sg *eval.Singular, basePath, outTern, tok string) (*surgeryRepo
 	if err != nil {
 		return rep, err
 	}
+	defer base.Close()
 	out, err := OpenST(outTern)
 	if err != nil {
 		return rep, err
 	}
+	defer out.Close()
 	f, err := os.OpenFile(outTern, os.O_RDWR, 0)
 	if err != nil {
 		return rep, err

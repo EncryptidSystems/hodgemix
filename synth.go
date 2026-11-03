@@ -6,8 +6,6 @@ import (
 	"math/cmplx"
 	"os"
 	"time"
-
-	"hodgemix/train"
 )
 
 type Entry struct {
@@ -320,12 +318,14 @@ func gapLock(theta []float64, refOf []int, wLock float64) KResult {
 	return res
 }
 
-// flowGrid is one Ricci–DeTurck step of the residual toward the base.
+// flowGrid is the mix's training step. The assembled grid already holds the
+// base gauge and the locked harmonic. descend trains the curl residual and
+// writes that gauge and harmonic back. Neck sites stay the base.
 func flowGrid(out, ref []float64, G [2]int) []float64 {
 	if len(out) != G[0]*G[1] || len(out) != len(ref) {
 		return out
 	}
-	g, neck := train.Flow(out, ref, G[0], G[1])
+	g, neck := descend(out, ref, out, G[0], G[1])
 	if neck > 0 {
 		logf("      train: one Ricci–DeTurck step, neck sites capped=%d", neck)
 	}

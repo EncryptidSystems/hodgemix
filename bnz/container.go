@@ -20,12 +20,14 @@ import (
 )
 
 const (
-	MRaw          = 0
-	MZstd         = 1
-	MTern         = 2
-	MBF16         = 3
-	Magic         = "BNZ3"
-	EmbChunkBytes = 8192 * 2560 * 2
+	MRaw  = 0
+	MZstd = 1
+	MTern = 2
+	MBF16 = 3
+	Magic = "BNZ3"
+	// EmbChunkRows is how many rows of a BF16 matrix go in one segment.
+	// The byte size is this many rows of that tensor's own width.
+	EmbChunkRows = 8192
 )
 
 type Segment struct {
@@ -104,9 +106,13 @@ func Plan(f *os.File) ([]Segment, int64, error) {
 		if s > pos {
 			segs = append(segs, Segment{Name: "gap", RawOff: pos, RawLen: s - pos})
 		}
-		if it.Dtype == "BF16" && len(it.Shape) == 2 && e-s > EmbChunkBytes {
-			rb := int64(2 * it.Shape[1])
-			rows := max(1, EmbChunkBytes/rb)
+		rb := int64(0)
+		if len(it.Shape) == 2 {
+			rb = int64(2 * it.Shape[1])
+		}
+		chunk := int64(EmbChunkRows) * rb
+		if it.Dtype == "BF16" && len(it.Shape) == 2 && rb > 0 && e-s > chunk {
+			rows := int64(EmbChunkRows)
 			for r0 := int64(0); r0 < int64(it.Shape[0]); r0 += rows {
 				r1 := min(int64(it.Shape[0]), r0+rows)
 				segs = append(segs, Segment{Name: fmt.Sprintf("%s[%d:%d]", it.name, r0, r1), dtype: "BF16",

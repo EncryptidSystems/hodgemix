@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -78,7 +77,7 @@ func packNeck(ternPath, floatPath, outPath string, max int, tol float64) error {
 
 // appendSing copies neckPath and adds neck limbs for the singular set the body limbs left at
 // center. It does not refit or re-lock those body limbs. The float checkpoint is floatPath.
-// OUT has to sit next to the Champ config.json: champCheck reads that file.
+// The run file sets the config for outPath.
 func appendSing(neckPath, floatPath, outPath string) error {
 	base, err := OpenST(floatPath)
 	if err != nil {
@@ -165,7 +164,10 @@ func appendSing(neckPath, floatPath, outPath string) error {
 	if err := w.Close(nil); err != nil {
 		return err
 	}
-	cfg := filepath.Join(filepath.Dir(outPath), "config.json")
+	cfg := eval.FilesOf(outPath).Config
+	if cfg == "" {
+		return fmt.Errorf("%s: no config set (run file: config)", outPath)
+	}
 	if bad, _ := champCheck(outPath, cfg); len(bad) > 0 {
 		return fmt.Errorf("champ:\n  %s", strings.Join(bad, "\n  "))
 	}

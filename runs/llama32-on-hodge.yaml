@@ -1,0 +1,20 @@
+base:
+  model: C:\Users\grego\models\dev\hodge-vaultgemma-1\hodge-vaultgemma-1.bnz.ternary.safetensors
+  tokenizer: C:\Users\grego\EncryptidSystems\stage-ai\models\hodge-1\tokenizer.json
+  tokenizer_config: C:\Users\grego\EncryptidSystems\stage-ai\models\hodge-1\tokenizer_config.json
+  config: C:\Users\grego\EncryptidSystems\stage-ai\models\hodge-1\config.json
+  special_tokens_map: C:\Users\grego\models\dev\hodge-vaultgemma-1\special_tokens_map.json
+  generation_config: C:\Users\grego\EncryptidSystems\stage-ai\models\hodge-1\generation_config.json
+sources:
+  - model:
+      - C:\Users\grego\models\Llama-3.2-3B-Instruct\model-00001-of-00002.safetensors
+      - C:\Users\grego\models\Llama-3.2-3B-Instruct\model-00002-of-00002.safetensors
+    weight: 1
+    tokenizer: C:\Users\grego\models\Llama-3.2-3B-Instruct\tokenizer.json
+    tokenizer_config: C:\Users\grego\models\Llama-3.2-3B-Instruct\tokenizer_config.json
+    config: C:\Users\grego\models\Llama-3.2-3B-Instruct\config.json
+    special_tokens_map: C:\Users\grego\models\Llama-3.2-3B-Instruct\special_tokens_map.json
+out: C:\Users\grego\models\dev\llama32-on-hodge\llama32-on-hodge.bnz
+settings:
+  limbs: 2
+  src-rope-theta: 500000

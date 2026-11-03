@@ -1,7 +1,7 @@
 package main
 
 // --bisect: which role breaks a mix. Each of --roles is mixed alone (every other tensor is the
-// base's, copied), the ternary output is scored with the reference forward (eval/, 2B4T shape) and
+// base's, copied), the ternary output is scored with the reference forward and
 // the table role -> ppl is printed and kept in OUT.bisect.json. No paper equation: a diagnostic.
 
 import (
@@ -25,7 +25,7 @@ type bisectRow struct {
 func bisect(c runCfg, basePath string, srcs []string, out, tok string) {
 	base, err := eval.Run(basePath, tok)
 	if err != nil {
-		die("bisect: the base cannot be scored (%v); --bisect needs the 2B4T shape and its tokenizer.json", err)
+		die("bisect: the base cannot be scored (%v)", err)
 	}
 	logScore("base", base)
 	bst, err := OpenST(basePath)
