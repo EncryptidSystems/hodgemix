@@ -85,14 +85,6 @@ Files under `runs/` are operator run files for this machine. They are not a port
 
 `weight_scale` is the mean absolute value over nonzero codes. A tensor the base already has keeps the base magnitude. Champ multiplies by that scale.
 
-## Scale fix
-
-An earlier writer stored the new tensor's own absmean as `weight_scale`. On an already-ternary tensor that value is the code scale times the fraction of nonzero codes, and a contributor's absmean belongs to that contributor's norm gains. On the first 2B4T + Qwen3-0.6B run those scales sat at about 0.27–0.39× the base on every BitLinear, and base codes with those scales moved perplexity on the fixed sentences from 18 to 60. The stored scale is now the mean absolute weight over the nonzero codes. Absmean stays the RoundClip threshold. An unchanged tensor gets the base scale back.
-
-## End-to-end
-
-`e2e/run_e2e.sh DIR` serves `DIR/model.bnz` with bnz-loader's `bnz4serve` and opens `e2e/www/e2e.html` in headless Chrome. The page uses bnz-loader's JavaScript unchanged. The check is: the signature verifies, every segment decoded by BNZ4Dec matches the ternary safetensors bytes, and the runtime weight-buffer digest and logits match a reference safetensors upload. `--bnz-force-rans` forces methods 4 and 5 on a tiny file. The recorded ternmix-py run (`--rotate off`, three sources) was 79/79 segments bit-exact, with and without `--bnz-force-rans`. `--rotate on` throws "untied LM head" in that runtime, which is the C8 refusal.
-
 ## Defaults
 
 Every constant comes from `paper_v2` Appendix A unless a flag overrides it (`params.go`, decision 10).
