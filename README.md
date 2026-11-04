@@ -1,10 +1,8 @@
 # hodgemix
 
-hodgemix builds one ternary model from a base checkpoint and one or more open-weight contributors. The mix is Hodge–Kuramoto alignment in weight space: seed alignment, a Hodge split, ternary TIES on the curl, and a selective DTFT lock on the harmonic part. There is no loss and no backward pass. The training step is one closed-form update, described below.
+hodgemix builds one ternary model from a base checkpoint and one or more open-weight contributors. The mix is Hodge–Kuramoto alignment in weight space: seed alignment, a Hodge split, ternary TIES on the curl, and a selective DTFT lock on the harmonic part. There is no loss and no backward pass, just pure topological shaping and discrete geometry. The training step is one closed-form update, described below.
 
-The output is a BitNet b1.58 layout in BNZ4, the container [Champ](https://ai.encryptid.systems) and bnz-loader read. Audio and vision towers on a contributor are carried into that file. They are not folded into the text mix.
-
-Encryptid Systems. The method is the paper *Ternary Conversion and Mixing of Open-Weight Models via Hodge–Kuramoto Alignment* (`paper_v2.pdf` in this tree). 
+The method is the paper *Ternary Conversion and Mixing of Open-Weight Models via Hodge–Kuramoto Alignment* (`paper_v2.pdf` in this tree). 
 
 Weights are not in this repository. A run reads the checkpoints named in its arguments or in a run file.
 
